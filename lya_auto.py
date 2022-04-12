@@ -14,7 +14,7 @@ Automatically identify and filter out ly-a absorption in quasar spectra.
 
 import numpy as np
 import matplotlib.pyplot as plt
-import os
+#import os
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 
@@ -22,16 +22,16 @@ from scipy.optimize import curve_fit
 # Setup
 #-----------------------------------------------------------------------------
 
-obj_name = 'J1646'
-spec_dir = 'specs/J1646/' # data directory (with /)
-spec_file_1 = 'spec-4181-55685-0543-dered.txt' # spectrum 1 file name
-spec_file_2 = 'spSpec-53167-1423-017_skysubDR.dr5' # spectrum 2 file name
-spec_mjd_1 = '55685' # MJD of spectrum 1
-spec_mjd_2 = '53167' # MjD of spectrum 2
+obj_name = 'J085825'
+spec_dir = 'specs/J085825/' # data directory (with /)
+spec_file_1 = 'spec-0468-51912-0036-dered.txt' # spectrum 1 file name
+spec_file_2 = 'spec-3815-55537-0910.dr9' # spectrum 2 file name
+spec_mjd_1 = '51912' # MJD of spectrum 1
+spec_mjd_2 = '55537' # MjD of spectrum 2
 
-z = 3.0329 # redshift of object (float)
+z = 2.8684 # redshift of object (float)
 
-delta = 4 # Number of wavelength bins to fit in one gaussian abs line
+delta = 5 # Number of wavelength bins to fit in one gaussian abs line
 perc_cut=0.75 # Between 0 and 1. Percentage of normalized flux abs must exceed.
 wave_min=1060 # Min wavelength for finding peaks.
 wave_max=1216 # Maximum wavelength for finding peaks
@@ -273,9 +273,9 @@ def get_line_mins(wave, norm_flux, wave_min=900, wave_max=1216, \
 
 def gauss(wave, *p):
     
-    norm, mu, sigma = p
+    norm, mu, sigma, shift = p
     
-    curve = 1+norm*np.exp(-(wave-mu)**2/(2.*sigma**2))
+    curve = shift+norm*np.exp(-(wave-mu)**2/(2.*sigma**2))
     
     return(curve)
 
@@ -423,7 +423,7 @@ for spec_idx in [0,1]:
         xdata = norm_wave[spec_idx][line_idx-delta:line_idx+delta]
         ydata = norm_flux[spec_idx][line_idx-delta:line_idx+delta]
         
-        p0 = [-1, line_wave, 0.5]
+        p0 = [-1, line_wave, 0.5, 1] # initial guess (norm, mu, sigma, shift)
         try:
             popt, pcov = curve_fit(gauss, xdata, ydata, p0=p0)
             fit_flux = gauss(xdata, *popt)
@@ -447,8 +447,8 @@ for spec_idx in [0,1]:
     
 plt.figure(dpi=200)
 
-plt.plot(norm_wave[0], norm_flux[0], alpha=0.4, color='red', ds='steps-mid')
-plt.plot(norm_wave[1], norm_flux[1], alpha=0.4, color='blue', ds='steps-mid')
+plt.plot(norm_wave[0], norm_flux[0], alpha=0.4, color='blue', ds='steps-mid')
+plt.plot(norm_wave[1], norm_flux[1], alpha=0.4, color='red', ds='steps-mid')
 plt.plot(line_waves1, line_fluxes1, 'r*')
 plt.plot(line_waves2, line_fluxes2, 'b*')
 plt.axhline(1, color='black', alpha=0.5, ls='--', label='Norm')
@@ -458,7 +458,7 @@ plt.plot(err_waves[1], err_fluxes[1], 'gx')
 
 for spec_idx in [0,1]:
     
-    colors = ['red', 'blue']
+    colors = ['blue', 'red']
     
     for i, flux in enumerate(fit_fluxes[spec_idx]):
         
@@ -478,7 +478,7 @@ plt.savefig((spec_dir+obj_name+'_fit_lines.png'), format='png')
 plt.show()
 plt.clf()
 
-#%% Remove Lines ---------------------------------------------------------------
+# Remove Lines ---------------------------------------------------------------
 
 for spec_idx in [0,1]:
     
@@ -491,9 +491,7 @@ for spec_idx in [0,1]:
             wavebin_mask = np.where(norm_wave[spec_idx] == wavebin)[0][0]
             line_mask.append(wavebin_mask)
         
-        print(line_mask)
-        
-        norm_flux[spec_idx][line_mask] = norm_flux[spec_idx][line_mask] + (1-flux)
+        norm_flux[spec_idx][line_mask] = norm_flux[spec_idx][line_mask] + (max(flux)-flux)
 
 # Plot Cleaned Spectra -------------------------------------------------------
 
