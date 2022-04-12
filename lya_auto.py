@@ -22,14 +22,14 @@ from scipy.optimize import curve_fit
 # Setup
 #-----------------------------------------------------------------------------
 
-obj_name = 'J075852'
-spec_dir = 'specs/J075852/' # data directory (with /)
-spec_file_1 = 'spec-2265-53674-0405-dered.txt' # spectrum 1 file name
-spec_file_2 = 'spec-4506-55568-0824.dr9' # spectrum 2 file name
-spec_mjd_1 = '53674' # MJD of spectrum 1
-spec_mjd_2 = '55568' # MjD of spectrum 2
+obj_name = 'J014548'
+spec_dir = 'specs/J014548/' # data directory (with /)
+spec_file_1 = 'spec-0402-51793-0314-dered.txt' # spectrum 1 file name
+spec_file_2 = 'spec-4231-55444-0035.dr9' # spectrum 2 file name
+spec_mjd_1 = '51793' # MJD of spectrum 1
+spec_mjd_2 = '55444' # MjD of spectrum 2
 
-z = 3.3734 # redshift of object (float)
+z = 2.7903 # redshift of object (float)
 
 delta = 5 # Number of wavelength bins to fit in one gaussian abs line
 perc_cut=0.75 # Between 0 and 1. Percentage of normalized flux abs must exceed.
@@ -452,8 +452,8 @@ plt.figure(dpi=200)
 
 plt.plot(norm_wave[0], norm_flux[0], alpha=0.4, color='blue', ds='steps-mid')
 plt.plot(norm_wave[1], norm_flux[1], alpha=0.4, color='red', ds='steps-mid')
-plt.plot(line_waves1, line_fluxes1, 'r*')
-plt.plot(line_waves2, line_fluxes2, 'b*')
+plt.plot(line_waves1, line_fluxes1, 'b*')
+plt.plot(line_waves2, line_fluxes2, 'r*')
 plt.axhline(1, color='black', alpha=0.5, ls='--', label='Norm')
 plt.axhline(perc_cut, color='red', alpha=0.5, ls='--', label='Percent Cutoff')
 plt.plot(err_waves[0], err_fluxes[0], 'gx', label='Fit Error')
