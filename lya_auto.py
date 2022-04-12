@@ -22,14 +22,14 @@ from scipy.optimize import curve_fit
 # Setup
 #-----------------------------------------------------------------------------
 
-obj_name = 'J085825'
-spec_dir = 'specs/J085825/' # data directory (with /)
-spec_file_1 = 'spec-0468-51912-0036-dered.txt' # spectrum 1 file name
-spec_file_2 = 'spec-3815-55537-0910.dr9' # spectrum 2 file name
-spec_mjd_1 = '51912' # MJD of spectrum 1
-spec_mjd_2 = '55537' # MjD of spectrum 2
+obj_name = 'J075852'
+spec_dir = 'specs/J075852/' # data directory (with /)
+spec_file_1 = 'spec-2265-53674-0405-dered.txt' # spectrum 1 file name
+spec_file_2 = 'spec-4506-55568-0824.dr9' # spectrum 2 file name
+spec_mjd_1 = '53674' # MJD of spectrum 1
+spec_mjd_2 = '55568' # MjD of spectrum 2
 
-z = 2.8684 # redshift of object (float)
+z = 3.3734 # redshift of object (float)
 
 delta = 5 # Number of wavelength bins to fit in one gaussian abs line
 perc_cut=0.75 # Between 0 and 1. Percentage of normalized flux abs must exceed.
@@ -208,7 +208,7 @@ def norm_specs(waves, fluxes, norm_point=1300, width=1):
     return(waves, norm_fluxes)
 
 def get_line_mins(wave, norm_flux, wave_min=900, wave_max=1216, \
-                  distance=3, width=2, perc_cut=1.0, plot=True):
+                  distance=3, width=2, wmax=6, perc_cut=1.0, plot=True):
     """
     Get miminum abs line values in Ly-a region.
 
@@ -226,6 +226,8 @@ def get_line_mins(wave, norm_flux, wave_min=900, wave_max=1216, \
         Miminum distance in wavelength bins between potential abs lines. The default is 3.
     width : float, optional
         Minimun width of abs lines in wavelength bins. The default is 2.
+    wmax : float, optional
+        Maximum width of abs lines in wavelength bins. The default is 5.
     perc_cut : float, optional
         Between 0 and 1. Percentage of normalized flux abs must exceed. The default is 1.0.
     plot : bool, optional
@@ -243,7 +245,8 @@ def get_line_mins(wave, norm_flux, wave_min=900, wave_max=1216, \
     x = -1*norm_flux
     
     border = -perc_cut*np.ones(x.size)
-    peaks, properties = find_peaks(x, height=(border, 0), distance=distance, width=width)
+    peaks, properties = find_peaks(x, height=(border, 0), \
+                                   distance=distance, width=(width, wmax))
     
     line_mask = np.where((wave[peaks] >= wave_min) & (wave[peaks] <= wave_max))
     
