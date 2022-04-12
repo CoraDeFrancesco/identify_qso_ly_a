@@ -22,20 +22,21 @@ from scipy.optimize import curve_fit
 # Setup
 #-----------------------------------------------------------------------------
 
-obj_name = 'J014548'
-spec_dir = 'specs/J014548/' # data directory (with /)
-spec_file_1 = 'spec-0402-51793-0314-dered.txt' # spectrum 1 file name
-spec_file_2 = 'spec-4231-55444-0035.dr9' # spectrum 2 file name
-spec_mjd_1 = '51793' # MJD of spectrum 1
-spec_mjd_2 = '55444' # MjD of spectrum 2
+obj_name = 'J085825'
+spec_dir = 'specs/J085825/' # data directory (with /)
+spec_file_1 = 'spec-0468-51912-0036-dered.txt' # spectrum 1 file name
+spec_file_2 = 'spec-3815-55537-0910.dr9' # spectrum 2 file name
+spec_mjd_1 = '51912' # MJD of spectrum 1
+spec_mjd_2 = '55537' # MjD of spectrum 2
 
-z = 2.7903 # redshift of object (float)
+z = 2.8684 # redshift of object (float)
 
 delta = 5 # Number of wavelength bins to fit in one gaussian abs line
 perc_cut=0.75 # Between 0 and 1. Percentage of normalized flux abs must exceed.
 wave_min=1060 # Min wavelength for finding peaks.
 wave_max=1216 # Maximum wavelength for finding peaks
 width=2 # Number of wavelength bins for a minimum to be considered a peak.
+wmax=80 #Maximum width of abs lines in wavelength bins. The default is 5.
 
 #-----------------------------------------------------------------------------
 # Functions
@@ -196,7 +197,6 @@ def norm_specs(waves, fluxes, norm_point=1300, width=1):
     wavelength arrays (unchanged), normalized fluxes.
 
     """
-    
     norm_fluxes = []
     
     for i, flux in enumerate(fluxes):
@@ -208,7 +208,7 @@ def norm_specs(waves, fluxes, norm_point=1300, width=1):
     return(waves, norm_fluxes)
 
 def get_line_mins(wave, norm_flux, wave_min=900, wave_max=1216, \
-                  distance=3, width=2, wmax=6, perc_cut=1.0, plot=True):
+                  distance=2, width=2, wmax=6, perc_cut=1.0, plot=True):
     """
     Get miminum abs line values in Ly-a region.
 
@@ -223,7 +223,7 @@ def get_line_mins(wave, norm_flux, wave_min=900, wave_max=1216, \
     wave_max : float, optional
         Maximum wavelength for finding lines. The default is 1216.
     distance : float, optional
-        Miminum distance in wavelength bins between potential abs lines. The default is 3.
+        Miminum distance in wavelength bins between potential abs lines. The default is 2.
     width : float, optional
         Minimun width of abs lines in wavelength bins. The default is 2.
     wmax : float, optional
@@ -236,9 +236,7 @@ def get_line_mins(wave, norm_flux, wave_min=900, wave_max=1216, \
     Returns
     -------
     Wavelength of line mins, fluxes of line mins.
-
     """
-    
     wave_mask = np.where((wave >= wave_min) & (wave <= wave_max))
     
     #x = -1*norm_flux[wave_mask]
@@ -389,13 +387,13 @@ plt.clf()
 
 line_waves1, line_fluxes1, line_idxs1 = get_line_mins(norm_wave[0], norm_flux[0], \
                                         perc_cut=perc_cut, wave_min=wave_min, \
-                                        wave_max=wave_max, width=width,\
-                                        plot=False)
+                                        wave_max=wave_max, width=width, wmax=wmax,\
+                                        plot=True)
     
 line_waves2, line_fluxes2, line_idxs2 = get_line_mins(norm_wave[1], norm_flux[1], \
                                         perc_cut=perc_cut, wave_min=wave_min, \
-                                        wave_max=wave_max, width=width,\
-                                        plot=False)
+                                        wave_max=wave_max, width=width, wmax=wmax,\
+                                        plot=True)
     
 line_waves = [line_waves1, line_waves2]
 line_fluxes = [line_fluxes1, line_fluxes2]
@@ -465,7 +463,7 @@ for spec_idx in [0,1]:
     
     for i, flux in enumerate(fit_fluxes[spec_idx]):
         
-        plt.plot(fit_waves[spec_idx][i], flux, 'r-.', alpha=0.8, color=colors[spec_idx])
+        plt.plot(fit_waves[spec_idx][i], flux, 'r-', alpha=0.7, color=colors[spec_idx], lw=2)
 
 plt.xlabel('Rest Frame Wavelength (A)')
 plt.ylabel(r'Normalized Flux')
@@ -474,6 +472,7 @@ plt.title('Fit Ly-a Lines')
 plt.legend(fontsize=8)
 
 plt.xlim(wave_min, wave_max)
+# plt.xlim(1080, 1140)
 plt.ylim(-0.1, 2)
 
 plt.savefig((spec_dir+obj_name+'_fit_lines.png'), format='png')
