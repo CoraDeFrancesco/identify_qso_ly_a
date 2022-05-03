@@ -110,8 +110,11 @@ plt.clf()
 
 def lnlike_q(theta):
     z = z_test+theta[-1]
+    
     C_dec = np.exp(np.dot(np.append(1.0,theta[:-1]),interp_pca_r(lam)))  # lam is wavelength
+    
     chi2 = ivar_q_fit*np.power(flux-C_dec,2.0)
+    
     return -np.sum(chi2)
 
 # chi2_q = lambda *args: -2 * lnprob_q(*args)
