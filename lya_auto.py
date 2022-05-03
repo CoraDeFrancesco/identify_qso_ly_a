@@ -14,13 +14,21 @@ Automatically identify and filter out ly-a absorption in quasar spectra.
 
 import numpy as np
 import matplotlib.pyplot as plt
-#import os
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 
 #-----------------------------------------------------------------------------
 # Setup
 #-----------------------------------------------------------------------------
+
+# obj_name = 'J075852'
+# spec_dir = 'specs/J075852/' # data directory (with /)
+# spec_file_1 = 'spec-2265-53674-0405-dered.txt' # spectrum 1 file name
+# spec_file_2 = 'spec-4506-55568-0824.dr9' # spectrum 2 file name
+# spec_mjd_1 = '53674' # MJD of spectrum 1
+# spec_mjd_2 = '53674' # MjD of spectrum 2
+
+# z = 3.3734 # redshift of object (float)
 
 obj_name = 'J085825'
 spec_dir = 'specs/J085825/' # data directory (with /)
@@ -31,11 +39,15 @@ spec_mjd_2 = '55537' # MjD of spectrum 2
 
 z = 2.8684 # redshift of object (float)
 
+
+
+norm_point = 1300
+
 delta = 5 # Number of wavelength bins to fit in one gaussian abs line
 perc_cut=0.75 # Between 0 and 1. Percentage of normalized flux abs must exceed.
 wave_min=1060 # Min wavelength for finding peaks.
-wave_max=1216 # Maximum wavelength for finding peaks
-width=2 # Number of wavelength bins for a minimum to be considered a peak.
+wave_max=1130 # Maximum wavelength for finding peaks
+width=1 # Number of wavelength bins for a minimum to be considered a peak.
 wmax=80 #Maximum width of abs lines in wavelength bins. The default is 5.
 
 #-----------------------------------------------------------------------------
@@ -176,7 +188,7 @@ def get_avg_flux_val(wave, flux, center, width):
     
     return(avg_flux_val)
 
-def norm_specs(waves, fluxes, norm_point=1300, width=1):
+def norm_specs(waves, fluxes, norm_point=1700, width=1):
     """
     Normalize spectra based on flux value at a certain wavelength.
 
@@ -272,6 +284,35 @@ def get_line_mins(wave, norm_flux, wave_min=900, wave_max=1216, \
         
     return(line_mins_wave, line_mins_flux, line_mins_idxs)
 
+def plot_sdss_lines(wave_min, wave_max):
+    """
+    Adds vertical lines marking some common SDSS spectral lines
+    (Ly-a, NV, SiIV+OIV, CIV, CIII, MGII). Only plots withing the given 
+    wavelength range.
+    
+    Labels are included. To display, please add 'plt.lenend()' to your script.
+
+    Parameters
+    ----------
+    wave_min : float
+        Minimum wavelength for plotting.
+    wave_max : float
+        Maximum wavelength for plotting.
+
+    Returns
+    -------
+    None.
+
+    """
+    
+    waves = np.array([1033, 1215, 1240.81, 1399.8, 1549, 1908, 2799])
+    species = ['OVI', r'Ly$\alpha$', 'NV', 'SiIV+OIV', 'CIV', 'CIII', 'MgII']
+    
+    wl_range_mask = np.where((wave_min < waves) & (wave_max > waves))
+    
+    for i in wl_range_mask[0]:
+        plt.axvline(waves[i], label=species[i], ls='--', color=('C'+str(i)))
+
 def gauss(wave, *p):
     
     norm, mu, sigma, shift = p
@@ -358,7 +399,8 @@ plt.clf()
 
 # Crude normalization --------------------------------------------------------
 
-norm_wave, norm_flux = norm_specs((align_wave, align_wave), align_fluxes)
+norm_wave, norm_flux = norm_specs((align_wave, align_wave), \
+                                  align_fluxes, norm_point=norm_point)
 
 # Check normalization --------------------------------------------------------
 
@@ -382,6 +424,34 @@ plt.legend(fontsize=8)
 plt.show()
 
 plt.clf()
+
+
+# Plot whole normalized specs
+
+plt.figure(dpi=200)
+
+# plt.axhline(1, color='black', alpha=0.8)
+plot_sdss_lines(900, 1700)
+plt.plot(norm_wave[0], norm_flux[0], lw=1, alpha=0.7, \
+         label=spec_labels[0], ds='steps-mid', color='blue')
+plt.plot(norm_wave[1], norm_flux[1], lw=1, alpha=0.7, \
+         label=spec_labels[1], ds='steps-mid', color='red')
+# plt.plot(norm_point, 1, color='orange', marker='*', label='Scale Point', ls='')
+
+plt.xlabel('Rest Frame Wavelength (A)')
+plt.ylabel('Scaled Flux')
+plt.title('Scaled Spectra')
+
+plt.xlim(1000, 1700)
+plt.ylim(bottom=-0.1, top=3)
+
+plt.legend(fontsize=14)
+
+plt.show()
+
+plt.clf()
+
+#%%
 
 # Find Peaks -----------------------------------------------------------------
 

@@ -141,8 +141,8 @@ def plot_sdss_lines(wave_min, wave_max):
 
     """
     
-    waves = np.array([1215, 1240.81, 1399.8, 1549, 1908, 2799])
-    species = [r'Ly$\alpha$', 'NV', 'SiIV+OIV', 'CIV', 'CIII', 'MgII']
+    waves = np.array([1033, 1215, 1240.81, 1399.8, 1549, 1908, 2799])
+    species = ['OVI', r'Ly$\alpha$', 'NV', 'SiIV+OIV', 'CIV', 'CIII', 'MgII']
     
     wl_range_mask = np.where((wave_min < waves) & (wave_max > waves))
     

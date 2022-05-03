@@ -1,0 +1,67 @@
+
+
+# how to load wavelengths on both sides, components, and the projection matrix from the pickle
+
+import pickle
+wave_pca_r,pca_comp_r,wave_pca_b,pca_comp_b,X_proj = pickle.load(open(foldd+compfil,'rb'))
+
+
+# Bounds for the coefficients on the red side: safely inflated from the training set. Best-fit values outside of these are quite suspicious!
+
+bounds = [(-60, 60),
+         (-15, 15),
+         (-8, 8),
+         (-7, 7),
+         (-5, 5),
+         (-4, 4),
+         (-3, 3),
+         (-4, 4),
+         (-2, 2),
+         (-2, 2),
+         (-2, 2),
+         (-2, 2),
+         (-2, 2),
+         (-2, 2),         
+         (-2, 2)]
+
+# extra parameter for redshift "wiggle room", which is also part of our method (values typical for redshift error at z=6-8)
+
+bounds.append((-0.1,0.05))
+
+
+# define some likelihood that you want to minimize, then that becomes a chi-squared (feel free to experiment)
+
+def lnlike_q(theta):
+    z = z_test+theta[-1]
+    C_dec = np.exp(np.dot(np.append(1.0,theta[:-1]),interp_pca_r(lam)))  # lam is wavelength
+    chi2 = ivar_q_fit*np.power(flux-C_dec,2.0)
+    return -np.sum(chi2)
+
+chi2_q = lambda *args: -2 * lnprob_q(*args)
+
+
+# Initial guess:  is the mean quasar spectrum
+
+guess = np.zeros(n_comp_r)
+
+
+# two example scipy-optimize methods that you may want to try:
+
+
+result_q = op.minimize(chi2_q, guess, bounds = bounds)
+
+result_q = op.differential_evolution(chi2_q, bounds = bounds,popsize=30,recombination=0.5,polish=True, disp=True, tol=0.02)
+
+
+# one way of getting the coefficients out and projecting them:
+
+dz_q = result_q.x[-1]
+coeffs_r_q = np.append(1.0,result_q.x[:-1])
+coeffs_b_q = np.dot(coeffs_r_q,X_proj)
+pca_q_r_10 = np.exp(np.dot(coeffs_r_q,pca_comp_r))
+pca_q_b_10 = np.exp(np.dot(coeffs_b_q,pca_comp_b))
+wave10_r = wave_pca_r*(1+z_test+dz_q)/(1+z_test)
+wave10_b = wave_pca_b*(1+z_test+dz_q)/(1+z_test)
+
+
+
