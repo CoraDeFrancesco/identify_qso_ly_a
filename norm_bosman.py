@@ -10,6 +10,107 @@ import matplotlib.pyplot as plt
 
 import scipy.optimize as op
 
+def align_data(data_wave, data_flux, data_err, data_names=None, wave_min=1000.,\
+               wave_max=3000., get_res=True, save=False, save_dir=None, res=None,\
+               interp_wave=0):
+    """
+    Parameters
+    ----------
+    data_wave : arr
+        DESCRIPTION.
+    data_flux : arr
+        DESCRIPTION.
+    data_err : arr
+        DESCRIPTION.
+    data_names : arr, optional
+        Names of the spectra to use when saving. Generally of the form
+        'spec-plate-mjd-fiber'
+    wave_min : float, optional
+        DESCRIPTION. The default is 1000.
+    wave_max : float, optional
+        DESCRIPTION. The default is 3000.
+    get_res : bool, optional
+        DESCRIPTION. The default is True, in which case the resolution will be 
+        calculated for each spectrum, and the minimum will be used.
+        If False, the default resolution of 1 wavelength bin per Angstrom
+        will be used. The user can set a resolution with kwarg 'res'.
+    save : bool, optional
+        DESCRIPTION. The default is False.
+    save_dir : str, optional
+        DESCRIPTION. The default is None.
+    res : float, optional
+        Resolution to use. 'get_res' must be set to 'False'.
+    interp_wave : arr, optional
+        If provided, use this wavelength array for all spectra instead of
+        calculating the resolution.
+
+    Returns
+    -------
+    interp_wave : arr
+        Aligned wavebins.
+    interp_fluxes : arr
+        Fluxes at aligned wavebins (dimension = numspecs).
+    interp_errs : arr
+        Errors at aligned wavebins (dimension = numspecs).
+
+    """
+    
+    numspecs = len(data_wave)
+    
+    if get_res: #calculate the minimum resolution of the sample
+        lengths = [] #number of data points in each spectrum
+        coverage = [] #wavelength coverage of each spectrum
+        resolutions = [] #resolution of each spectrum
+        for i in data_wave: #calculate the wavelength coverage of each spec
+            length=len(i)
+            lengths.append(length)
+            delta = max(i) - min(i)
+            coverage.append(delta)
+        for idx, cov in enumerate(coverage): #calculate the resolution
+            res = lengths[idx]/cov
+            resolutions.append(res)
+        res=min(resolutions)
+        print('Default resolution (1 wavebin per A) reset to', res)
+    elif res:
+        res = res
+    else:
+        res=1
+    
+    if interp_wave:
+        length = len(interp_wave)
+        delta = max(interp_wave) - min(interp_wave)
+        res = length / delta
+        print('Resolution of provided wave arr is :', np.round(res,2), 'wavebins/Ang.')
+    else:
+        num_pts = res * (wave_max - wave_min)
+        num_pts = int(np.round(num_pts, 0))
+        interp_wave = np.linspace(wave_min, wave_max, num_pts)
+    
+    interp_fluxes = []
+    interp_errs = []
+    
+    for i in range(0, numspecs):        
+    
+        aligned_flux = np.interp(interp_wave, data_wave[i], data_flux[i], left=0, right=0)
+        aligned_err = np.interp(interp_wave, data_wave[i], data_err[i], left=0, right=0)
+        
+        interp_fluxes.append(aligned_flux)
+        interp_errs.append(aligned_err)
+        
+        if save:
+            
+            save_name = str(data_names[i]) + str('_aligned.dat')
+    
+            save_data = np.array((interp_wave, aligned_flux, aligned_err)).T
+            header = 'interp_wave, aligned_flux, aligned_err'
+    
+            np.savetxt((save_dir + save_name), save_data, header=header, fmt='%s')
+            
+    interp_fluxes = np.asarray(interp_fluxes, dtype='float')
+    interp_errs = np.asarray(interp_errs, dtype='float')
+    
+    return(interp_wave, interp_fluxes, interp_errs)
+
 # how to load wavelengths on both sides, components, and the 
 # projection matrix from the pickle
 
@@ -103,13 +204,30 @@ plt.title((obj_name+ ' '+ spec_mjd_1))
 plt.show()
 plt.clf()
 
+# Align PCA eigenvecs and data in wavelength bins
+
+align_waves = np.append(pca_comp_r, lam)
+align_fluxes = np.append(wave_pca_r, flux)
+wave_min = min(wave_pca_r)
+wave_max = max(wave_pca_r)
+align_err = np.zeros(shape=align_waves.shape)
+
+align_r_vecs = align_data(align_waves, align_fluxes, align_err, data_names=None, wave_min=wave_min,\
+               wave_max=wave_max, get_res=True, save=False, save_dir=None, res=None,\
+               interp_wave=lam)
+    
+    
+#%%
 
 
 # define some likelihood that you want to minimize, then that 
 # becomes a chi-squared (feel free to experiment)
 
 def lnlike_q(theta):
-    z = z_test+theta[-1]
+    z = z_test+theta[-1] # add the z wiggle to redshift
+    
+    coeffs = np.append(1.0,theta[:-1]) # coefficients of eigenvecs with coeff for mean (1)
+    
     
     C_dec = np.exp(np.dot(np.append(1.0,theta[:-1]),interp_pca_r(lam)))  # lam is wavelength
     
