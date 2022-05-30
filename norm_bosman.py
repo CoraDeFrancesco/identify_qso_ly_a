@@ -76,7 +76,7 @@ def align_data(data_wave, data_flux, data_err, data_names=None, wave_min=1000.,\
     else:
         res=1
     
-    if interp_wave:
+    if interp_wave.any():
         length = len(interp_wave)
         delta = max(interp_wave) - min(interp_wave)
         res = length / delta
@@ -110,6 +110,8 @@ def align_data(data_wave, data_flux, data_err, data_names=None, wave_min=1000.,\
     interp_errs = np.asarray(interp_errs, dtype='float')
     
     return(interp_wave, interp_fluxes, interp_errs)
+
+################################################################################
 
 # how to load wavelengths on both sides, components, and the 
 # projection matrix from the pickle
@@ -204,21 +206,65 @@ plt.title((obj_name+ ' '+ spec_mjd_1))
 plt.show()
 plt.clf()
 
+#%%
+
 # Align PCA eigenvecs and data in wavelength bins
 
-align_waves = np.append(pca_comp_r, lam)
-align_fluxes = np.append(wave_pca_r, flux)
+align_waves = [lam]
+for i in range(0, len(pca_comp_r)):
+    align_waves.append(wave_pca_r)
+align_waves = np.asarray(align_waves)
+align_waves = np.asarray(align_waves)
+align_fluxes = [flux]
+for i, comp in enumerate(pca_comp_r):
+    align_fluxes.append(comp)
+align_fluxes = np.asarray(align_fluxes)
+
+
 wave_min = min(wave_pca_r)
 wave_max = max(wave_pca_r)
-align_err = np.zeros(shape=align_waves.shape)
 
-align_r_vecs = align_data(align_waves, align_fluxes, align_err, data_names=None, wave_min=wave_min,\
+align_err = []
+for i, al_flux in enumerate(align_fluxes):
+    zero_err = np.zeros(len(al_flux))
+    align_err.append(zero_err)
+
+align_r_wave, align_r_flux, align_r_err = align_data(align_waves, align_fluxes, \
+               align_err, data_names=None, wave_min=wave_min,\
                wave_max=wave_max, get_res=True, save=False, save_dir=None, res=None,\
                interp_wave=lam)
     
-    
+interp_pca_r = align_r_flux[1:]
+
 #%%
 
+plt.figure(dpi=200)
+
+plt.plot(wave_pca_r, pca_comp_r[0], color='red', lw=2, label='R Mean', alpha=0.5)
+
+for ri, pca_r in enumerate(pca_comp_r[1:]):
+    plt.plot(wave_pca_r, pca_r, color='red', alpha=0.5)
+
+for i, al_flux in enumerate(align_r_flux[1:]):
+    
+    plt.plot(lam, al_flux, color='purple', alpha=0.3, lw=4)
+
+plt.xlim(1400, 1700)
+plt.ylim(-0.2, 0.2)
+    
+plt.xlabel('Wavelength (A)')
+plt.ylabel('Flux (unitless)')
+# plt.title('Bosman+21b PCA Eignevectors')
+    
+plt.title('Aligned')
+
+plt.show()
+plt.clf()
+
+
+
+
+#%%
 
 # define some likelihood that you want to minimize, then that 
 # becomes a chi-squared (feel free to experiment)
@@ -226,12 +272,13 @@ align_r_vecs = align_data(align_waves, align_fluxes, align_err, data_names=None,
 def lnlike_q(theta):
     z = z_test+theta[-1] # add the z wiggle to redshift
     
-    coeffs = np.append(1.0,theta[:-1]) # coefficients of eigenvecs with coeff for mean (1)
+    coeffs = np.append([1.0,1.0],theta[:-1]) # coefficients of eigenvecs with coeff for mean (1)
+    C_dec = np.exp(np.dot(coeffs, align_r_flux))
+    chi2 = np.power(flux - C_dec , 2.0)
     
+    # C_dec = np.exp(np.dot(np.append(1.0,theta[:-1]),interp_pca_r(lam)))  # lam is wavelength
     
-    C_dec = np.exp(np.dot(np.append(1.0,theta[:-1]),interp_pca_r(lam)))  # lam is wavelength
-    
-    chi2 = ivar_q_fit*np.power(flux-C_dec,2.0)
+    # chi2 = ivar_q_fit*np.power(flux-C_dec,2.0)
     
     return -np.sum(chi2)
 
