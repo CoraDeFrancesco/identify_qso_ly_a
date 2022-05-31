@@ -449,5 +449,45 @@ plt.clf()
 # Normalize
 ##############################################################################
 
+#%% Scale blue side to data wavelength resolution
+
+align_waves = [lam, wave_pca_b]
+align_fluxes = [flux, pca_q_b_10]
+
+wave_min = min(wave_pca_b)
+wave_max = max(wave_pca_b)
+
+align_err = []
+for i, al_flux in enumerate(align_fluxes):
+    zero_err = np.zeros(len(al_flux))
+    align_err.append(zero_err)
+
+align_b_wave, align_b_flux, align_b_err = align_data(align_waves, align_fluxes, \
+               align_err, data_names=None, wave_min=wave_min,\
+               wave_max=wave_max, get_res=True, save=False, save_dir=None, res=None,\
+               interp_wave=lam)
+    
+align_pca_b = align_b_flux[1]
+
+# Check Norm
+    
+plt.figure(dpi=200)
+
+plt.plot(lam, flux, color='black', alpha=0.5, label='Data')
+plt.plot(align_b_wave, align_pca_b, color='blue', label='Bos/Dav Fit')
+plt.axhline(1, color='black', ls='--', alpha=0.5)
+plt.plot(lam, flux/align_pca_b, color='green', label='Norm', alpha=0.8)
+
+plt.legend(fontsize=8)
+
+plt.xlim(wave_min, wave_max)
+plt.ylim(-0.01, 3)
+
+plt.xlabel('Wavelength (A)')
+plt.ylabel('Scaled Flux')
+plt.title(('Blue-Side Normalization '+obj_name+ ' '+ spec_mjd_1))
+
+plt.show()
+plt.clf()
 
 
