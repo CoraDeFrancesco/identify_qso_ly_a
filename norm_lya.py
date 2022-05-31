@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Tue May  3 12:58:19 2022
+Created on Tue May 31 10:25:42 2022
 
 @author: user1
 """
+##############################################################################
+# Imports
+##############################################################################
+
 import numpy as np
 import matplotlib.pyplot as plt
+import pickle
+from scipy.optimize import curve_fit
 
-import scipy.optimize as op
+##############################################################################
+# Functions
+##############################################################################
 
 def align_data(data_wave, data_flux, data_err, data_names=None, wave_min=1000.,\
                wave_max=3000., get_res=True, save=False, save_dir=None, res=None,\
@@ -111,15 +119,107 @@ def align_data(data_wave, data_flux, data_err, data_names=None, wave_min=1000.,\
     
     return(interp_wave, interp_fluxes, interp_errs)
 
-################################################################################
+def get_avg_flux_val(wave, flux, center, width):
+    """
+    Get the average flux value centered at some wavelength.
 
-# how to load wavelengths on both sides, components, and the 
-# projection matrix from the pickle
+    Parameters
+    ----------
+    wave : arr
+        Wavlength array for spectrum.
+    flux : arr
+        Flux array for spectrum.
+    center : float
+        Wavelength for which you want to calculate the average flux.
+        Must be in same units as wave array.
+    width : float
+        Delta wavelength units over which to compute the average.
 
-import pickle
+    Returns
+    -------
+    Average flux value within range.
+
+    """
+    
+    avg_flux_val = 1
+    
+    wave_min = center - width
+    wave_max = center + width
+    
+    wave_mask = np.where((wave >= wave_min) & (wave <= wave_max))
+    
+    avg_flux_val = np.median(flux[wave_mask])
+    
+    return(avg_flux_val)
+
+def norm_specs(waves, fluxes, norm_point=1700, width=1):
+    """
+    Normalize spectra based on flux value at a certain wavelength.
+
+    Parameters
+    ----------
+    waves : arr
+        Wavelength arrays (1 for each spec).
+    fluxes : arr
+        Flux arrays.
+    norm_point : float, optional
+        Wavelength at which to normalize the spectra. The default is 1300.
+    width : float, optional
+        Width (in wavelength units) over which to average the flux values
+        around the norm point. The default is 1.
+
+    Returns
+    -------
+    wavelength arrays (unchanged), normalized fluxes.
+
+    """
+    norm_fluxes = []
+    
+    for i, flux in enumerate(fluxes):
+        
+        norm = get_avg_flux_val(waves[i], flux, center=norm_point, width=width)
+        norm_flux = flux / norm
+        norm_fluxes.append(norm_flux)
+        
+    return(waves, norm_fluxes)
+
+def eigen_fit(wave, *p):
+    """
+    Fit Bosman eigenvectors to a spectrum.
+
+    Parameters
+    ----------
+    wave : arr
+        Wavelength array of data. Must already be aligned with the wavelength array
+        of red side Bosman eigenvectors.
+    *p : arr (or array-like)
+        Parameters of fit. Scaling coefficients of mean and eigenvectors.
+
+    Returns
+    -------
+    Spectrum simulated from Bosman eigenvectors.
+
+    """
+    
+    
+    coeffs = p[:-1]
+    shift=0
+    
+    z_guess = coeffs[-1]
+    
+    r_flux_vecs = align_r_flux[1:]
+    
+    curve = shift + np.exp(np.dot(coeffs, r_flux_vecs))
+    
+    return(curve)
+
+##############################################################################
+# Load Data, Eigenvecs
+##############################################################################
+
 wave_pca_r, pca_comp_r, wave_pca_b, \
     pca_comp_b,X_proj = pickle.load(open('pca_all_r15_b10_nn21_bosfit.pckl','rb'))
-    
+                                
 # Look at PCA comps
 
 plt.figure(dpi=200)
@@ -147,7 +247,8 @@ plt.clf()
 
 # 15 values -> only the eigenvecs, not the mean!
 
-bounds = [(-60, 60),
+bounds = [(0, 120), # bound for the mean - might realize this is a bad idea later lol
+         (-60, 60),
          (-15, 15),
          (-8, 8),
          (-7, 7),
@@ -194,7 +295,6 @@ spec0 = obj_specs[0]
 spec1 = obj_specs[1]
 
 # Bosman var names
-
 lam = spec0[0] / (1+z_test)
 flux = spec0[1]
 err = spec0[2]
@@ -209,9 +309,32 @@ plt.title((obj_name+ ' '+ spec_mjd_1))
 plt.show()
 plt.clf()
 
-#%%
+norm_point = 1290
 
-# Align PCA eigenvecs and data in wavelength bins
+# Scale data flux by val at 1290 (Davies+ 2018)
+lams, fluxes = norm_specs([spec0[0]/ (1+z_test), spec1[0]/ (1+z_test)], \
+                       [spec0[1], spec1[1]], norm_point=norm_point)
+
+lam = lams[0]
+flux = fluxes[0]
+
+plt.figure(dpi=200)
+plt.plot(lam, flux)
+
+plt.xlabel('Wavelength (A)')
+plt.ylabel('Scaled Flux')
+plt.title((obj_name+ ' '+ spec_mjd_1))
+plt.axhline(1, color='gray', ls='--')
+plt.axvline(norm_point, color='gray', ls='--')
+
+plt.show()
+plt.clf()
+
+#
+
+##############################################################################
+# Align
+##############################################################################
 
 align_waves = [lam]
 for i in range(0, len(pca_comp_r)):
@@ -222,7 +345,6 @@ align_fluxes = [flux]
 for i, comp in enumerate(pca_comp_r):
     align_fluxes.append(comp)
 align_fluxes = np.asarray(align_fluxes)
-
 
 wave_min = min(wave_pca_r)
 wave_max = max(wave_pca_r)
@@ -240,9 +362,6 @@ align_r_wave, align_r_flux, align_r_err = align_data(align_waves, align_fluxes, 
 interp_pca_r = align_r_flux[1:]
 align_mean = align_r_flux[1]
 
-mean_sub_flux = flux - align_mean
-
-#%%
 
 plt.figure(dpi=200)
 
@@ -260,104 +379,75 @@ plt.ylim(-0.2, 0.2)
     
 plt.xlabel('Wavelength (A)')
 plt.ylabel('Flux (unitless)')
-# plt.title('Bosman+21b PCA Eignevectors')
     
 plt.title('Aligned')
 
 plt.show()
 plt.clf()
 
-#%% play with mean
+##############################################################################
+# Fit & Project
+##############################################################################
+
+shift_guess = 0
+comps_guess = np.zeros(len(bounds))
+
+# p0 = np.append(shift_guess, comps_guess)
+
+p0 = comps_guess
+
+popt, pcov = curve_fit(eigen_fit, lam, flux, p0=p0)
+
+
+shift_fit=0
+
+coeffs_fit = popt[:-1]
+
+coeffs_r_q = coeffs_fit
+coeffs_b_q = np.dot(coeffs_r_q, X_proj)
+pca_q_r_10 = np.exp(np.dot(coeffs_r_q,pca_comp_r))
+pca_q_b_10 = np.exp(np.dot(coeffs_b_q,pca_comp_b))
+
+# Plot fit
 
 plt.figure(dpi=200)
 
-scale_mean = 15
-trans_mean = 10
+plt.plot(lam, flux, color='gray')
+plt.plot(wave_pca_r, shift_fit+pca_q_r_10, color='red')
+plt.plot(wave_pca_b, shift_fit+pca_q_b_10, color='blue')
 
-plt.plot(lam, flux, color='black', alpha=0.7)
+plt.ylim(bottom=-0.01)
+plt.xlim(min(wave_pca_b), max(wave_pca_r))
 
-plt.plot(lam, scale_mean*align_mean+trans_mean, color='green')
+plt.xlabel('Wavelength (A)')
+plt.ylabel('Scaled Flux')
+plt.title(('Fit Result '+obj_name+ ' '+ spec_mjd_1))
 
 plt.show()
 plt.clf()
 
-bad_mean_fit = scale_mean*align_mean+trans_mean
+# Plot Ly-a forest region
 
-
-
-
-#%%
-
-# define some likelihood that you want to minimize, then that 
-# becomes a chi-squared (feel free to experiment)
-
-def lnlike_q(theta):
-    # theta is guess (mean, coeffs, z_wiggle)
-    z_guess = theta[-1]
-    coeffs_guess = theta[:-1]
-    coeffs_guess_mean = np.append([1.0], coeffs_guess)
-    print(coeffs_guess)
-    
-    z = z_test+z_guess # add the z wiggle to redshift
-    
-    #subtract the mean from the data
-    flux_sub = flux - bad_mean_fit
-    
-    # coeffs = np.append([1.0],theta[:-1]) # coefficients of eigenvecs with coeff for mean (1)
-    
-    r_flux_vecs = align_r_flux[2:] #just the pca bits (coeffs)
-    
-    C_dec = np.exp(np.dot(coeffs_guess, r_flux_vecs))
-    
-    var_dat = 1/(err**2)
-    
-    chi2 = var_dat*np.power(flux - C_dec , 2.0)
-    
-    # C_dec = np.exp(np.dot(np.append(1.0,theta[:-1]),interp_pca_r(lam)))  # lam is wavelength
-    
-    # chi2 = ivar_q_fit*np.power(flux-C_dec,2.0)
-    
-    return -np.sum(chi2)
-
-# chi2_q = lambda *args: -2 * lnprob_q(*args)
-chi2_q = lambda *args: -2 * lnlike_q(*args)
-
-
-# Initial guess:  is the mean quasar spectrum
-
-#n_comp_r = pca_comp_r.shape[0] # number of red PCA eigenvectors + mean
-guess = np.zeros(len(bounds)) # guess zeros for all coefficients, z_wiggle
-
-
-# two example scipy-optimize methods that you may want to try:
-
-
-result_q = op.minimize(chi2_q, guess, bounds = bounds)
-
-# result_q = op.differential_evolution(chi2_q, bounds = bounds,popsize=30,recombination=0.5,polish=True, disp=True, tol=0.02)
-
-
-# one way of getting the coefficients out and projecting them:
-
-dz_q = result_q.x[-1]
-coeffs_r_q = np.append(1.0,result_q.x[:-1])
-coeffs_b_q = np.dot(coeffs_r_q,X_proj)
-pca_q_r_10 = np.exp(np.dot(coeffs_r_q,pca_comp_r))
-pca_q_b_10 = np.exp(np.dot(coeffs_b_q,pca_comp_b))
-wave10_r = wave_pca_r*(1+z_test+dz_q)/(1+z_test)
-wave10_b = wave_pca_b*(1+z_test+dz_q)/(1+z_test)
-
-#%%
-
-plt.figure(dpi=100)
+plt.figure(dpi=200)
 
 plt.plot(lam, flux, color='black')
-plt.plot(wave10_r, pca_q_r_10, color='red')
-plt.plot(wave10_b, pca_q_b_10, color='blue')
+plt.plot(wave_pca_r, shift_fit+pca_q_r_10, color='red')
+plt.plot(wave_pca_b, shift_fit+pca_q_b_10, color='blue')
 plt.axhline(1, color='gray', alpha=0.5, ls='--')
+
+plt.ylim(bottom=-0.01)
+plt.xlim(right=1216, left=min(wave_pca_b))
+
+plt.xlabel('Wavelength (A)')
+plt.ylabel('Scaled Flux')
+plt.title(('Blue-Side Projection '+obj_name+ ' '+ spec_mjd_1))
 
 plt.show()
 plt.clf()
+
+##############################################################################
+# Normalize
+##############################################################################
 
 
 
