@@ -16,6 +16,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
+import norm_module as nm
 
 #-----------------------------------------------------------------------------
 # Setup
@@ -30,23 +31,23 @@ from scipy.optimize import curve_fit
 
 # z = 3.3734 # redshift of object (float)
 
-obj_name = 'J085825'
-spec_dir = 'specs/J085825/' # data directory (with /)
-spec_file_1 = 'spec-0468-51912-0036-dered.txt' # spectrum 1 file name
-spec_file_2 = 'spec-3815-55537-0910.dr9' # spectrum 2 file name
-spec_mjd_1 = '51912' # MJD of spectrum 1
-spec_mjd_2 = '55537' # MjD of spectrum 2
+obj_name = 'J1646'
+spec_dir = 'specs/J1646/' # data directory (with /)
+spec_file_1 = 'spec-4181-55685-0543-dered.txt' # spectrum 1 file name
+spec_file_2 = 'spSpec-53167-1423-017_skysubDR.dr5' # spectrum 2 file name
+spec_mjd_1 = '55685' # MJD of spectrum 1
+spec_mjd_2 = '1423' # MjD of spectrum 2
 
-z = 2.8684 # redshift of object (float)
+z = 3.0329 # redshift of object (float)
 
 
 
-norm_point = 1300
+#norm_point = 1300
 
 delta = 5 # Number of wavelength bins to fit in one gaussian abs line
 perc_cut=0.75 # Between 0 and 1. Percentage of normalized flux abs must exceed.
 wave_min=1060 # Min wavelength for finding peaks.
-wave_max=1130 # Maximum wavelength for finding peaks
+wave_max=1200 # Maximum wavelength for finding peaks
 width=1 # Number of wavelength bins for a minimum to be considered a peak.
 wmax=80 #Maximum width of abs lines in wavelength bins. The default is 5.
 
@@ -399,8 +400,19 @@ plt.clf()
 
 # Crude normalization --------------------------------------------------------
 
-norm_wave, norm_flux = norm_specs((align_wave, align_wave), \
-                                  align_fluxes, norm_point=norm_point)
+# norm_wave, norm_flux = norm_specs((align_wave, align_wave), \
+#                                   align_fluxes, norm_point=norm_point)
+    
+# Good normalization ---------------------------------------------------------
+
+norm_wave = []
+norm_flux = []
+
+for i, align_flux in enumerate(align_fluxes):
+    
+    bos_norm = nm.norm(align_wave, align_flux, plot_checks=False)
+    norm_wave.append(align_wave)
+    norm_flux.append(bos_norm)
 
 # Check normalization --------------------------------------------------------
 
@@ -414,7 +426,7 @@ plt.plot(norm_wave[1], norm_flux[1], lw=1, alpha=0.7, \
 
 plt.xlabel('Rest Frame Wavelength (A)')
 plt.ylabel('Normalized Flux')
-plt.title('Normalized Specs')
+plt.title('Normalized Spectra - Ly-a Zoom')
 
 plt.xlim(wave_min, wave_max)
 plt.ylim(bottom=-0.1, top=2)
@@ -440,12 +452,12 @@ plt.plot(norm_wave[1], norm_flux[1], lw=1, alpha=0.7, \
 
 plt.xlabel('Rest Frame Wavelength (A)')
 plt.ylabel('Scaled Flux')
-plt.title('Scaled Spectra')
+plt.title('Normalized Spectra')
 
 plt.xlim(1000, 1700)
-plt.ylim(bottom=-0.1, top=3)
+plt.ylim(bottom=-0.1)
 
-plt.legend(fontsize=14)
+plt.legend(fontsize=8)
 
 plt.show()
 
