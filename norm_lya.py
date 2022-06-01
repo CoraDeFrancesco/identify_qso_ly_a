@@ -490,4 +490,18 @@ plt.title(('Blue-Side Normalization '+obj_name+ ' '+ spec_mjd_1))
 plt.show()
 plt.clf()
 
+#%% Test Nrom Module
 
+import norm_module as nm
+
+
+norm_out = nm.norm(spec0[0] / (1+z_test), spec0[1], plot_checks=(False))
+
+plt.figure(dpi=200)
+
+plt.plot(spec0[0]/(1+z_test), norm_out)
+
+plt.title('Norm Result')
+
+plt.show()
+plt.clf()

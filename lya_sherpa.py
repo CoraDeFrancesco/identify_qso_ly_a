@@ -5,6 +5,10 @@ Created on Tue May 31 16:08:27 2022
 
 @author: user1
 """
+# Upon further consideration, this is a bad idea.
+# Abandoning! :)
+
+
 import numpy as np
 import matplotlib.pyplot as plt
 import sherpa.astro.models
@@ -23,21 +27,21 @@ from sherpa.fit import Fit
 
 from sherpa.models import model
 
-__all__ = ('LyNorm', )
+__all__ = ('VecCont', )
 
 
-def _LyNorm(pars, x):
+def _VecCont(pars, x):
     """Use Bosman eivenvectors to normalize Ly-a forest region.
 
     Parameters
     ----------
-    pars: sequence of 4 numbers
-        The order is amplitude, center, width, and slope.
-        These numbers are assumed to be valid (e.g. width
-        is 0 or greater).
+    pars: sequence of 17 numbers
+        The order is mean coefficient, 15 red eigenvec coefficients,
+        then a redshift adjustment.
     x: sequence of numbers
         The grid on which to evaluate the model. It is expected
-        to be a floating-point type.
+        to be a floating-point type. Expected sequence is wavelength
+        in Angstroms.
 
     Returns
     -------
@@ -46,43 +50,19 @@ def _LyNorm(pars, x):
 
     Notes
     -----
-    This is based on the interface described at
-    https://docs.astropy.org/en/stable/api/astropy.modeling.functional_models.Trapezoid1D.html
-    but implemented without looking at the code, so any errors
-    are not due to AstroPy.
+    Eigenvectors from Bosman+21b with method from Davies+18.
     """
 
-    (amplitude, center, width, slope) = pars
+    coeffs = pars[:-1]
+    shift=0
+    
+    z_guess = coeffs[-1]
+    
+    r_flux_vecs = align_r_flux[1:]
+    
+    curve = shift + np.exp(np.dot(coeffs, r_flux_vecs)
 
-    # There are five segments:
-    #    xlo = center - width/2
-    #    xhi = center + width/2
-    #    x0  = xlo - amplitude/slope
-    #    x1  = xhi + amplitude/slope
-    #
-    #    flat   xlo <= x < xhi
-    #    slope  x0 <= x < xlo
-    #           xhi <= x < x1
-    #    zero   x < x0
-    #           x >= x1
-    #
-    hwidth = width / 2.0
-    dx = amplitude / slope
-    xlo = center - hwidth
-    xhi = center + hwidth
-    x0 = xlo - dx
-    x1 = xhi + dx
-
-    out = np.zeros(x.size)
-    out[(x >= xlo) & (x < xhi)] = amplitude
-
-    idx = np.where((x >= x0) & (x < xlo))
-    out[idx] = slope * x[idx] - slope * x0
-
-    idx = np.where((x >= xhi) & (x < x1))
-    out[idx] = - slope * x[idx] + slope * x1
-
-    return out
+    return curve
 
 
 class Trap1D(model.RegriddableModel1D):
