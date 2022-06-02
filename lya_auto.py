@@ -15,6 +15,7 @@ Automatically identify and filter out ly-a absorption in quasar spectra.
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
+from scipy.signal import peak_widths
 from scipy.optimize import curve_fit
 import norm_module as nm
 
@@ -31,25 +32,21 @@ import norm_module as nm
 
 # z = 3.3734 # redshift of object (float)
 
-obj_name = 'J1646'
-spec_dir = 'specs/J1646/' # data directory (with /)
-spec_file_1 = 'spec-4181-55685-0543-dered.txt' # spectrum 1 file name
-spec_file_2 = 'spSpec-53167-1423-017_skysubDR.dr5' # spectrum 2 file name
-spec_mjd_1 = '55685' # MJD of spectrum 1
-spec_mjd_2 = '1423' # MjD of spectrum 2
+obj_name = 'J075852'
+spec_dir = 'specs/J075852/' # data directory (with /)
+spec_file_1 = 'spec-2265-53674-0405-dered.txt' # spectrum 1 file name
+spec_file_2 = 'spec-4506-55568-0824.dr9' # spectrum 2 file name
+spec_mjd_1 = '53674' # MJD of spectrum 1
+spec_mjd_2 = '55568' # MjD of spectrum 2
 
-z = 3.0329 # redshift of object (float)
-
-
-
-#norm_point = 1300
+z = 3.3734 # redshift of object (float)
 
 delta = 5 # Number of wavelength bins to fit in one gaussian abs line
 perc_cut=0.75 # Between 0 and 1. Percentage of normalized flux abs must exceed.
 wave_min=1060 # Min wavelength for finding peaks.
 wave_max=1200 # Maximum wavelength for finding peaks
-width=1 # Number of wavelength bins for a minimum to be considered a peak.
-wmax=80 #Maximum width of abs lines in wavelength bins. The default is 5.
+width=2 # Number of wavelength bins for a minimum to be considered a peak.
+wmax=200 #Maximum width of abs lines in wavelength bins. The default is 5.
 
 #-----------------------------------------------------------------------------
 # Functions
@@ -396,13 +393,7 @@ plt.legend(fontsize=8)
 plt.show()
 
 plt.clf()
-
-
-# Crude normalization --------------------------------------------------------
-
-# norm_wave, norm_flux = norm_specs((align_wave, align_wave), \
-#                                   align_fluxes, norm_point=norm_point)
-    
+ 
 # Good normalization ---------------------------------------------------------
 
 norm_wave = []
@@ -463,8 +454,6 @@ plt.show()
 
 plt.clf()
 
-#%%
-
 # Find Peaks -----------------------------------------------------------------
 
 line_waves1, line_fluxes1, line_idxs1 = get_line_mins(norm_wave[0], norm_flux[0], \
@@ -480,6 +469,22 @@ line_waves2, line_fluxes2, line_idxs2 = get_line_mins(norm_wave[1], norm_flux[1]
 line_waves = [line_waves1, line_waves2]
 line_fluxes = [line_fluxes1, line_fluxes2]
 line_idxs = [line_idxs1, line_idxs2]
+
+#%% Find Broad Abs -------------------------------------------------------------
+
+line_widths1 = peak_widths(-1*norm_flux[0], line_idxs[0], rel_height=0.5)
+line_widths2 = peak_widths(-1*norm_flux[1], line_idxs[1], rel_height=0.5)
+
+plt.figure(dpi=200)
+plt.plot(norm_flux[0])
+plt.plot(line_idxs[0], norm_flux[0][line_idxs[0]], 'x')
+plt.hlines(-line_widths1[1], line_widths1[2], line_widths1[3], color='red')
+plt.xlim(1000, 1175)
+plt.ylim(-0.1, 1.2)
+plt.show()
+plt.clf()
+
+#%%
 
 # Fit Ly-a Lines -------------------------------------------------------------
 
@@ -601,3 +606,30 @@ plt.savefig((spec_dir+obj_name+'_cleaned.png'), format='png')
 plt.show()
 
 plt.clf()
+
+# Plot Full Spectra ----------------------------------------------------------
+
+plt.figure(dpi=200)
+
+plt.axhline(1, color='black', alpha=0.8)
+plt.plot(norm_wave[0], norm_flux[0], lw=1, alpha=0.7, \
+         label=spec_labels[0], ds='steps-mid', color='blue')
+plt.plot(norm_wave[1], norm_flux[1], lw=1, alpha=0.7, \
+         label=spec_labels[1], ds='steps-mid', color='red')
+
+plt.xlabel('Rest Frame Wavelength (A)')
+plt.ylabel(r'Normalized Flux')
+plt.title('Removed Lines')
+
+plt.xlim(wave_min)
+plt.ylim(bottom=-0.1, top=2)
+
+plt.legend(fontsize=8)
+
+# plt.savefig((spec_dir+obj_name+'_cleaned.png'), format='png')
+
+plt.show()
+
+plt.clf()
+
+
