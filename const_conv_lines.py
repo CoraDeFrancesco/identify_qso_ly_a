@@ -195,7 +195,7 @@ line_waves = [line_waves1, line_waves2]
 line_fluxes = [line_fluxes1, line_fluxes2]
 line_idxs = [line_idxs1, line_idxs2]
 line_idxs = np.asarray(line_idxs)
-flat_idxs = np.ndarray.flatten(line_idxs)
+flat_idxs = np.hstack(line_idxs)
 
 # Check to see if there is a matching Ly-a line for each peak
 
