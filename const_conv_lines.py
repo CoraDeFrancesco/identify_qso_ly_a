@@ -10,6 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from scipy.signal import peak_widths
+from scipy.interpolate import UnivariateSpline
 
 # Setup ----------------------------------------------------------------------
 
@@ -33,20 +34,26 @@ lshift = 1
 
 lnorm2 = -0.65
 lmu2 = 1090
-lsigma2 = 0.4
+lsigma2 = 0.45
 lshift2 = 1
 
+lnorm3 = -0.45
+lmu3 = 1107
+lsigma3 = 0.45
+lshift3 = 1
+
 x = np.linspace(1000, 1200, 1000)
-noise1 = np.random.normal(1, 0.02, size=len(x))
+noise1 = np.random.normal(1, 0.04, size=len(x))
 noise2 = np.random.normal(1, 0.07, size=len(x))
 
 delta = 5 # Number of wavelength bins to fit in one gaussian abs line
 perc_cut=0.8 # Between 0 and 1. Percentage of normalized flux abs must exceed.
 wave_min=1060 # Min wavelength for finding peaks.
 wave_max=1200 # Maximum wavelength for finding peaks
-width=2 # Number of wavelength bins for a minimum to be considered a peak.
+width=1 # Number of wavelength bins for a minimum to be considered a peak.
 wmax=80 #Maximum width of abs lines in wavelength bins. The default is 5.
-distance=5
+distance=3 #Miminum distance in wavelength bins between potential abs lines.
+n_prom = 3 #how many times the noise level a peak must be
 
 # Functions ------------------------------------------------------------------
 
@@ -139,11 +146,12 @@ bline = gauss(x, bnorm, bmu, bsigma, bshift)
 bline2 = gauss(x, bnorm2, bmu2, bsigma2, bshift2)
 lline = gauss(x, lnorm, lmu, lsigma, lshift)
 lline2 = gauss(x, lnorm2, lmu2, lsigma2, lshift2)
+lline3 = gauss(x, lnorm3, lmu3, lsigma3, lshift3)
 
 ly_min_mask = np.where(lline == min(lline))
 
-conv_1 = bline*lline*lline2*noise1
-conv_2 = bline2*lline*lline2*noise2
+conv_1 = bline*lline*lline2*noise1*lline3
+conv_2 = bline2*lline*lline2*noise2*lline3
 
 if plot_int:
 
@@ -152,7 +160,7 @@ if plot_int:
     plt.plot(x, bline, color='red', alpha=0.5)
     plt.plot(x, bline2, color='purple', alpha=0.5)
     
-    plt.plot(x, lline*lline2, label='Ly-a', lw=1, color='green')
+    #plt.plot(x, lline*lline2, label='Ly-a', lw=1, color='green')
     plt.plot(x,conv_1, label='Observed 1', color='red', lw=2)
     plt.plot(x,conv_2, label='Observed 2', color='purple', lw=2)
     
@@ -176,8 +184,8 @@ if plot_int:
 
 # Find Noise -----------------------------------------------------------------
 
-prom1 = 4*get_noise(x, conv_1, 1160, 1180)
-prom2 = 4*get_noise(x, conv_2, 1160, 1180)
+prom1 = n_prom*get_noise(x, conv_1, 1160, 1180)
+prom2 = n_prom*get_noise(x, conv_2, 1160, 1180)
 
 # Find Peaks -----------------------------------------------------------------
 
@@ -195,51 +203,112 @@ line_waves = [line_waves1, line_waves2]
 line_fluxes = [line_fluxes1, line_fluxes2]
 line_idxs = [line_idxs1, line_idxs2]
 line_idxs = np.asarray(line_idxs)
-flat_idxs = np.hstack(line_idxs)
+#flat_idxs = np.hstack(line_idxs)
 
 # Check to see if there is a matching Ly-a line for each peak
 
-line_idx_matched = []
+def match_lines(line_idxs, distance):
+    """
+    Match Ly-a abs lines from two specs.
 
-for i, idx_list in enumerate(line_idxs):
+    Parameters
+    ----------
+    line_idxs : arr
+        Array of line indexes of the form [idx_arr1, idx_arr2, ..., idx_arrN].
+    distance : float
+        Miminum distance in wavelength bins between potential abs lines.
+
+    Returns
+    -------
+    Array of matched Ly-a indexes.
+
+    """
     
-    for idx in idx_list:
-        
-        # check that we are within dist for all specs
-        idx_min = idx - distance
-        idx_max = idx + distance
-        
-        print('Checking for matches in range(', idx_min, idx_max, ')')
-        print('     Options:', flat_idxs)
-        # go to subsequent index lists
-        matches = 0
-        for fidx in flat_idxs:
+    flat_idxs = np.hstack(line_idxs)
+    
+    line_idx_matched = []
+    
+    for i, idx_list in enumerate(line_idxs):
+        matched_list_i = []
+    
+        for idx in idx_list:
             
-            if fidx in range(idx_min, idx_max):
-                print('     Found:', fidx)
-                matches += 1
-        print('     Total matches:', matches)
-        if matches == len(line_idxs):
-            line_idx_matched.append(idx)
-            print('     Adding idx to matched list.')
-        else:
-            print('     Not enough matches. Disregarding idx.')
+            # check that we are within dist for all specs
+            idx_min = idx - distance
+            idx_max = idx + distance
             
-line_idx_matched = np.unique(np.asarray(line_idx_matched)) # need to only select one idx per line
+            print('Checking for matches in range(', idx_min, idx_max, ')')
+            print('     Options:', flat_idxs)
+            # go to subsequent index lists
+            matches = 0
+            for fidx in flat_idxs:
+                
+                if fidx in range(idx_min, idx_max):
+                    print('     Found:', fidx)
+                    matches += 1
+            print('     Total matches:', matches)
+            if matches == len(line_idxs):
+                matched_list_i.append(idx)
+                print('     Adding idx to matched list.')
+            else:
+                print('     Not enough matches. Disregarding idx.')
+        line_idx_matched.append(matched_list_i)
     
+    return(line_idx_matched)
+
+  
+line_idx_matched = match_lines(line_idxs, distance)  
     
 
-# Find Broad Abs -------------------------------------------------------------
+# Plot Matches ---------------------------------------------------------------
 
-# line_widths1 = peak_widths(-1*conv_1, line_idxs1, rel_height=0.5)
-# line_widths2 = peak_widths(-1*conv_2, line_idxs2, rel_height=0.5)
-
-# plt.figure(dpi=200)
-# plt.plot(conv_1, alpha=0.5)
-# plt.plot(conv_2, alpha=0.5)
-# plt.plot(line_idxs1, conv_1[line_idxs1], 'x')
-# plt.plot(line_idxs2, conv_2[line_idxs2], 'x')
+plt.figure(dpi=200)
+plt.plot(x, conv_1, alpha=0.5)
+plt.plot(x, conv_2, alpha=0.5)
+plt.plot(x[line_idxs1], conv_1[line_idxs1], 'x', label='')
+plt.plot(x[line_idxs2], conv_2[line_idxs2], 'x')
 # plt.hlines(-line_widths1[1], line_widths1[2], line_widths1[3], color='red')
 # plt.hlines(-line_widths2[1], line_widths2[2], line_widths2[3], color='purple')
-# plt.show()
-# plt.clf()
+plt.plot(x[line_idx_matched[0]], np.ones(len(line_idx_matched[0])), '*')
+plt.show()
+plt.clf()
+
+#%% Smooth specs, fit spline ---------------------------------------------------
+
+#Mask out positions of the Ly-a lines
+lya_masks = []
+
+for line_list in line_idx_matched:
+    lya_mask = np.asarray([])
+    for idx in line_list:
+        min_val = idx - delta
+        max_val = idx + delta
+        idxs = np.linspace(min_val, max_val, (2*delta)+1)
+        lya_mask = np.concatenate((lya_mask, idxs))
+    lya_mask = np.unique(lya_mask)
+    lya_masks.append(lya_mask)
+
+spline_mask_1 = []
+spline_mask_2 = []
+for i in range(0, len(x)):
+    if i not in lya_masks[0]:
+        spline_mask_1.append(i)
+    if i not in lya_masks[1]:
+        spline_mask_2.append(i)
+
+        
+
+#Spline fitting with smoothing s and degree k
+spl1 = UnivariateSpline(x[spline_mask_1], conv_1[spline_mask_1], s=1, k=3)
+spl2 = UnivariateSpline(x[spline_mask_2], conv_2[spline_mask_2], s=4, k=3)
+
+plt.figure(dpi=200)
+# plt.plot(x[spline_mask_1], conv_1[spline_mask_1], alpha=0.5, marker='o', ls='', ms=2)
+# plt.plot(x[spline_mask_2], conv_2[spline_mask_2], alpha=0.5, marker='o', ls='', ms=2)
+plt.plot(x, conv_1, alpha=0.5)
+plt.plot(x, conv_2, alpha=0.5)
+plt.plot(x, spl1(x))
+plt.plot(x, spl2(x))
+
+plt.show()
+plt.clf()

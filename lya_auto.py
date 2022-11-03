@@ -32,21 +32,23 @@ import norm_module as nm
 
 # z = 3.3734 # redshift of object (float)
 
-obj_name = 'J075852'
-spec_dir = 'specs/J075852/' # data directory (with /)
-spec_file_1 = 'spec-2265-53674-0405-dered.txt' # spectrum 1 file name
-spec_file_2 = 'spec-4506-55568-0824.dr9' # spectrum 2 file name
-spec_mjd_1 = '53674' # MJD of spectrum 1
-spec_mjd_2 = '55568' # MjD of spectrum 2
+obj_name = 'J085825'
+spec_dir = 'specs/J085825/' # data directory (with /)
+spec_file_1 = 'spec-0468-51912-0036-dered.txt' # spectrum 1 file name
+spec_file_2 = 'spec-3815-55537-0910.dr9' # spectrum 2 file name
+spec_mjd_1 = '51912' # MJD of spectrum 1
+spec_mjd_2 = '55537' # MjD of spectrum 2
 
-z = 3.3734 # redshift of object (float)
+z = 2.8684 # redshift of object (float)
 
-delta = 5 # Number of wavelength bins to fit in one gaussian abs line
+delta = 10 # Number of wavelength bins to fit in one gaussian abs line
 perc_cut=0.75 # Between 0 and 1. Percentage of normalized flux abs must exceed.
 wave_min=1060 # Min wavelength for finding peaks.
 wave_max=1200 # Maximum wavelength for finding peaks
-width=2 # Number of wavelength bins for a minimum to be considered a peak.
-wmax=200 #Maximum width of abs lines in wavelength bins. The default is 5.
+width=1 # Number of wavelength bins for a minimum to be considered a peak.
+wmax=10 #Maximum width of abs lines in wavelength bins. The default is 5.
+distance=2 #Miminum distance in wavelength bins between potential abs lines.
+n_prom = 1.5 #how many times the noise level a peak must be
 
 #-----------------------------------------------------------------------------
 # Functions
@@ -217,8 +219,8 @@ def norm_specs(waves, fluxes, norm_point=1700, width=1):
         
     return(waves, norm_fluxes)
 
-def get_line_mins(wave, norm_flux, wave_min=900, wave_max=1216, \
-                  distance=2, width=2, wmax=6, perc_cut=1.0, plot=True):
+def get_line_mins(wave, norm_flux, wave_min=900, wave_max=1216, prom=0.05,\
+                  distance=10, width=2, wmax=6, perc_cut=1.0, plot=True):
     """
     Get miminum abs line values in Ly-a region.
 
@@ -232,6 +234,8 @@ def get_line_mins(wave, norm_flux, wave_min=900, wave_max=1216, \
         Minimum wavelength for finding lines. The default is 900.
     wave_max : float, optional
         Maximum wavelength for finding lines. The default is 1216.
+    prom : float, optional
+        Minimum required prominence for lines. The default is 0.05.
     distance : float, optional
         Miminum distance in wavelength bins between potential abs lines. The default is 2.
     width : float, optional
@@ -254,7 +258,7 @@ def get_line_mins(wave, norm_flux, wave_min=900, wave_max=1216, \
     
     border = -perc_cut*np.ones(x.size)
     peaks, properties = find_peaks(x, height=(border, 0), \
-                                   distance=distance, width=(width, wmax))
+                                   distance=distance, width=(width, wmax), prominence=(prom))
     
     line_mask = np.where((wave[peaks] >= wave_min) & (wave[peaks] <= wave_max))
     
@@ -318,6 +322,63 @@ def gauss(wave, *p):
     curve = shift+norm*np.exp(-(wave-mu)**2/(2.*sigma**2))
     
     return(curve)
+
+def match_lines(line_idxs, distance):
+    """
+    Match Ly-a abs lines from two specs.
+
+    Parameters
+    ----------
+    line_idxs : arr
+        Array of line indexes of the form [idx_arr1, idx_arr2, ..., idx_arrN].
+    distance : float
+        Miminum distance in wavelength bins between potential abs lines.
+
+    Returns
+    -------
+    Array of matched Ly-a indexes.
+
+    """
+    
+    flat_idxs = np.hstack(line_idxs)
+    
+    line_idx_matched = []
+    
+    for i, idx_list in enumerate(line_idxs):
+        matched_list_i = []
+    
+        for idx in idx_list:
+            
+            # check that we are within dist for all specs
+            idx_min = idx - distance
+            idx_max = idx + distance
+            
+           # print('Checking for matches in range(', idx_min, idx_max, ')')
+            #print('     Options:', flat_idxs)
+            # go to subsequent index lists
+            matches = 0
+            for fidx in flat_idxs:
+                
+                if fidx in range(idx_min, idx_max):
+                    #print('     Found:', fidx)
+                    matches += 1
+            #print('     Total matches:', matches)
+            if matches >= len(line_idxs):
+                matched_list_i.append(idx)
+                #print('     Adding idx to matched list.')
+            #else:
+                #print('     Not enough matches. Disregarding idx.')
+        line_idx_matched.append(matched_list_i)
+    
+    return(line_idx_matched)
+
+def get_noise(data_wave, data_flux, wave_min, wave_max):
+    
+    reg_mask = np.where((data_wave < wave_max) & (data_wave > wave_min))
+    reg_flux = data_flux[reg_mask]
+    noise=np.std(reg_flux)
+    
+    return(noise)
 
 #-----------------------------------------------------------------------------
 # Execution
@@ -454,35 +515,80 @@ plt.show()
 
 plt.clf()
 
+# Find Noise -----------------------------------------------------------------
+
+prom1 = n_prom*get_noise(norm_wave[0], norm_flux[0], 1600, 1800)
+prom2 = n_prom*get_noise(norm_wave[1], norm_flux[1], 1600, 1800)
+
 # Find Peaks -----------------------------------------------------------------
 
 line_waves1, line_fluxes1, line_idxs1 = get_line_mins(norm_wave[0], norm_flux[0], \
                                         perc_cut=perc_cut, wave_min=wave_min, \
                                         wave_max=wave_max, width=width, wmax=wmax,\
-                                        plot=True)
+                                        plot=True, prom=prom1)
     
 line_waves2, line_fluxes2, line_idxs2 = get_line_mins(norm_wave[1], norm_flux[1], \
                                         perc_cut=perc_cut, wave_min=wave_min, \
                                         wave_max=wave_max, width=width, wmax=wmax,\
-                                        plot=True)
+                                        plot=True, prom=prom2)
     
 line_waves = [line_waves1, line_waves2]
 line_fluxes = [line_fluxes1, line_fluxes2]
 line_idxs = [line_idxs1, line_idxs2]
 
-#%% Find Broad Abs -------------------------------------------------------------
+# Match Lines ----------------------------------------------------------------
 
-line_widths1 = peak_widths(-1*norm_flux[0], line_idxs[0], rel_height=0.5)
-line_widths2 = peak_widths(-1*norm_flux[1], line_idxs[1], rel_height=0.5)
+line_idx_matched = match_lines(line_idxs, distance)
+line_waves_matched = [norm_wave[0][line_idx_matched[0]], norm_wave[1][line_idx_matched[1]]]
+line_fluxes_matched = [norm_flux[0][line_idx_matched[0]], norm_flux[1][line_idx_matched[1]]]
+
+#line_idxs_save = [line_idx_matched, line_idx_matched]
+
+# Plot Matches -------------------------------------------------------------
 
 plt.figure(dpi=200)
-plt.plot(norm_flux[0])
-plt.plot(line_idxs[0], norm_flux[0][line_idxs[0]], 'x')
-plt.hlines(-line_widths1[1], line_widths1[2], line_widths1[3], color='red')
-plt.xlim(1000, 1175)
-plt.ylim(-0.1, 1.2)
+
+# plt.axhline(1, color='black', alpha=0.8)
+plot_sdss_lines(wave_min, wave_max)
+plt.plot(norm_wave[0], norm_flux[0], lw=1, alpha=0.7, \
+         label=spec_labels[0], ds='steps-mid', color='blue')
+plt.plot(norm_wave[1], norm_flux[1], lw=1, alpha=0.7, \
+         label=spec_labels[1], ds='steps-mid', color='red')
+plt.plot(norm_wave[0][line_idx_matched[0]], norm_flux[0][line_idx_matched[0]], ls='', alpha=0.7, \
+         label='Matched', color='blue', marker='*')
+plt.plot(norm_wave[1][line_idx_matched[1]], norm_flux[1][line_idx_matched[1]], ls='', alpha=0.7, \
+         color='red', marker='*')
+# plt.plot(norm_point, 1, color='orange', marker='*', label='Scale Point', ls='')
+
+plt.xlabel('Rest Frame Wavelength (A)')
+plt.ylabel('Scaled Flux')
+plt.title('Normalized Spectra')
+
+plt.xlim(wave_min, wave_max)
+plt.ylim(bottom=-0.1, top=1.5)
+
+plt.legend(fontsize=8)
+
 plt.show()
+
 plt.clf()
+
+
+
+
+#%% Find Broad Abs -------------------------------------------------------------
+
+# line_widths1 = peak_widths(-1*norm_flux[0], line_idxs[0], rel_height=0.5)
+# line_widths2 = peak_widths(-1*norm_flux[1], line_idxs[1], rel_height=0.5)
+
+# plt.figure(dpi=200)
+# plt.plot(norm_flux[0])
+# plt.plot(line_idxs[0], norm_flux[0][line_idxs[0]], 'x')
+# plt.hlines(-line_widths1[1], line_widths1[2], line_widths1[3], color='red')
+# plt.xlim(1000, 1175)
+# plt.ylim(-0.1, 1.2)
+# plt.show()
+# plt.clf()
 
 #%%
 
@@ -504,9 +610,9 @@ for spec_idx in [0,1]:
     err_waves_spec = []
     err_fluxes_spec = []
     
-    for i, line_idx in enumerate(line_idxs[spec_idx]):
+    for i, line_idx in enumerate(line_idx_matched[spec_idx]):
         
-        line_wave = line_waves[spec_idx][i]
+        line_wave = line_waves_matched[spec_idx][i]
         
         xdata = norm_wave[spec_idx][line_idx-delta:line_idx+delta]
         ydata = norm_flux[spec_idx][line_idx-delta:line_idx+delta]
@@ -537,8 +643,8 @@ plt.figure(dpi=200)
 
 plt.plot(norm_wave[0], norm_flux[0], alpha=0.4, color='blue', ds='steps-mid')
 plt.plot(norm_wave[1], norm_flux[1], alpha=0.4, color='red', ds='steps-mid')
-plt.plot(line_waves1, line_fluxes1, 'b*')
-plt.plot(line_waves2, line_fluxes2, 'r*')
+plt.plot(norm_wave[0][line_idx_matched[0]], norm_flux[0][line_idx_matched[0]], 'b*')
+plt.plot(norm_wave[1][line_idx_matched[1]], norm_flux[1][line_idx_matched[1]], 'r*')
 plt.axhline(1, color='black', alpha=0.5, ls='--', label='Norm')
 plt.axhline(perc_cut, color='red', alpha=0.5, ls='--', label='Percent Cutoff')
 plt.plot(err_waves[0], err_fluxes[0], 'gx', label='Fit Error')
