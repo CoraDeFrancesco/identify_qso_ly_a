@@ -575,21 +575,6 @@ plt.clf()
 
 
 
-
-#%% Find Broad Abs -------------------------------------------------------------
-
-# line_widths1 = peak_widths(-1*norm_flux[0], line_idxs[0], rel_height=0.5)
-# line_widths2 = peak_widths(-1*norm_flux[1], line_idxs[1], rel_height=0.5)
-
-# plt.figure(dpi=200)
-# plt.plot(norm_flux[0])
-# plt.plot(line_idxs[0], norm_flux[0][line_idxs[0]], 'x')
-# plt.hlines(-line_widths1[1], line_widths1[2], line_widths1[3], color='red')
-# plt.xlim(1000, 1175)
-# plt.ylim(-0.1, 1.2)
-# plt.show()
-# plt.clf()
-
 #%%
 
 # Fit Ly-a Lines -------------------------------------------------------------
