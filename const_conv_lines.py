@@ -46,7 +46,7 @@ x = np.linspace(1000, 1200, 1000)
 noise1 = np.random.normal(1, 0.04, size=len(x))
 noise2 = np.random.normal(1, 0.07, size=len(x))
 
-delta = 5 # Number of wavelength bins to fit in one gaussian abs line
+delta = 3 # Number of wavelength bins to fit in one gaussian abs line
 perc_cut=0.8 # Between 0 and 1. Percentage of normalized flux abs must exceed.
 wave_min=1060 # Min wavelength for finding peaks.
 wave_max=1200 # Maximum wavelength for finding peaks
@@ -299,7 +299,7 @@ for i in range(0, len(x)):
         
 
 #Spline fitting with smoothing s and degree k
-spl1 = UnivariateSpline(x[spline_mask_1], conv_1[spline_mask_1], s=1, k=3)
+spl1 = UnivariateSpline(x[spline_mask_1], conv_1[spline_mask_1], s=1.5, k=3)
 spl2 = UnivariateSpline(x[spline_mask_2], conv_2[spline_mask_2], s=4, k=3)
 
 plt.figure(dpi=200)

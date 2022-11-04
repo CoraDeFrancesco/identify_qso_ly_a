@@ -18,6 +18,7 @@ from scipy.signal import find_peaks
 from scipy.signal import peak_widths
 from scipy.optimize import curve_fit
 import norm_module as nm
+from scipy.interpolate import UnivariateSpline
 
 #-----------------------------------------------------------------------------
 # Setup
@@ -41,14 +42,15 @@ spec_mjd_2 = '55537' # MjD of spectrum 2
 
 z = 2.8684 # redshift of object (float)
 
-delta = 10 # Number of wavelength bins to fit in one gaussian abs line
-perc_cut=0.75 # Between 0 and 1. Percentage of normalized flux abs must exceed.
+delta = 6 # Number of wavelength bins to fit in one gaussian abs line
+perc_cut=0.80 # Between 0 and 1. Percentage of normalized flux abs must exceed.
 wave_min=1060 # Min wavelength for finding peaks.
 wave_max=1200 # Maximum wavelength for finding peaks
 width=1 # Number of wavelength bins for a minimum to be considered a peak.
-wmax=10 #Maximum width of abs lines in wavelength bins. The default is 5.
+wmax=1000 #Maximum width of abs lines in wavelength bins. The default is 5.
 distance=2 #Miminum distance in wavelength bins between potential abs lines.
-n_prom = 1.5 #how many times the noise level a peak must be
+n_prom = 0.5 #how many times the noise level a peak must be
+spl_smooth = 3 #spline smoothing coefficient
 
 #-----------------------------------------------------------------------------
 # Functions
@@ -315,11 +317,41 @@ def plot_sdss_lines(wave_min, wave_max):
     for i in wl_range_mask[0]:
         plt.axvline(waves[i], label=species[i], ls='--', color=('C'+str(i)))
 
-def gauss(wave, *p):
+# class fitFuncs:
     
-    norm, mu, sigma, shift = p
+#     def __init__(self):
+        
+#         pass
+
+#     def gauss(wave, *p):
+        
+#         norm, mu, sigma, shift = p
+        
+#         curve = shift+norm*np.exp(-(wave-mu)**2/(2.*sigma**2))
+        
+#         return(curve)
     
-    curve = shift+norm*np.exp(-(wave-mu)**2/(2.*sigma**2))
+#     def gauss_spl_conv(wave, *p):
+        
+#         norm, mu, sigma, shift = p
+        
+#         gauss_curve = shift+norm*np.exp(-(wave-mu)**2/(2.*sigma**2))
+#         spl_curve = spl_spec(wave)
+#         curve = gauss_curve * spl_curve
+        
+#         return(curve)
+    
+# models = fitFuncs()
+
+def gauss_spl_conv(wave, *p):
+    
+    # norm, mu, sigma, shift = p
+    norm, mu, sigma = p
+    shift = 1
+    
+    gauss_curve = shift+norm*np.exp(-(wave-mu)**2/(2.*sigma**2))
+    spl_curve = spl_spec(wave)
+    curve = gauss_curve * spl_curve
     
     return(curve)
 
@@ -430,7 +462,7 @@ data_errs = [spec0[2], spec1[2]]
 data_names = spec_labels
 
 align_wave, align_fluxes, align_errs =  align_data(data_waves, data_fluxes, data_errs, \
-                       data_names=data_names, wave_min=800, \
+                       data_names=data_names, wave_min=wave_min, \
                        wave_max=2300, get_res=True, save=False)
 
 # Check alignment ------------------------------------------------------------
@@ -455,7 +487,7 @@ plt.show()
 
 plt.clf()
  
-# Good normalization ---------------------------------------------------------
+#%% Good normalization ---------------------------------------------------------
 
 norm_wave = []
 norm_flux = []
@@ -464,7 +496,18 @@ for i, align_flux in enumerate(align_fluxes):
     
     bos_norm = nm.norm(align_wave, align_flux, plot_checks=False)
     norm_wave.append(align_wave)
+    print(bos_norm)
     norm_flux.append(bos_norm)
+
+
+# for i, align_flux in enumerate(align_fluxes):
+    
+#     bos_norm = nm.norm(align_wave, align_flux, plot_checks=False)
+#     norm_wave.append(align_wave)
+#     print(bos_norm)
+#     norm_flux.append(bos_norm)
+    
+#%%
 
 # Check normalization --------------------------------------------------------
 
@@ -573,11 +616,59 @@ plt.show()
 
 plt.clf()
 
+#%% Smooth specs, fit spline ---------------------------------------------------
+
+wave_mask = np.where((norm_wave[0] >= wave_min) & (norm_wave[0] <= wave_max))
+
+#Mask out positions of the Ly-a lines
+lya_masks = []
+
+for line_list in line_idx_matched:
+    lya_mask = np.asarray([])
+    for idx in line_list:
+        min_val = idx - delta
+        max_val = idx + delta
+        idxs = np.linspace(min_val, max_val, (2*delta)+1)
+        lya_mask = np.concatenate((lya_mask, idxs))
+    lya_mask = np.unique(lya_mask)
+    lya_masks.append(lya_mask)
+
+spline_mask_1 = []
+spline_mask_2 = []
 
 
-#%%
+for i in range(0, len(norm_wave[0])): #wavelength aligned, so can use either one
+    if i not in lya_masks[0]:
+        spline_mask_1.append(i)
+    if i not in lya_masks[1]:
+        spline_mask_2.append(i)  
 
-# Fit Ly-a Lines -------------------------------------------------------------
+#Spline fitting with smoothing s and degree k
+spl1 = UnivariateSpline(norm_wave[0][spline_mask_1][wave_mask], \
+                        norm_flux[0][spline_mask_1][wave_mask], k=3, s=spl_smooth)
+spl2 = UnivariateSpline(norm_wave[1][spline_mask_2][wave_mask], \
+                        norm_flux[1][spline_mask_2][wave_mask], k=3, s=spl_smooth)
+    
+spl_funcs = [spl1, spl2]
+
+plt.figure(dpi=200)
+plt.plot(norm_wave[0], norm_flux[0], lw=1, alpha=0.2, \
+          label=spec_labels[0], ds='steps-mid', color='blue')
+plt.plot(norm_wave[1], norm_flux[1], lw=1, alpha=0.2, \
+          label=spec_labels[1], ds='steps-mid', color='red')
+plt.plot(norm_wave[0], spl1(norm_wave[0]), color='green')
+plt.plot(norm_wave[1], spl2(norm_wave[1]), color='orange')
+
+plt.xlim(wave_min, wave_max)
+plt.ylim(0, 2)
+
+plt.title('Spline Fit')
+
+plt.show()
+plt.clf()
+
+
+#%% Fit Ly-a Lines -------------------------------------------------------------
 
 # fit parameters for both observations
 
@@ -585,6 +676,7 @@ fit_waves = []
 fit_fluxes = []
 err_waves = []
 err_fluxes = []
+
 
 for spec_idx in [0,1]:
     
@@ -597,15 +689,21 @@ for spec_idx in [0,1]:
     
     for i, line_idx in enumerate(line_idx_matched[spec_idx]):
         
-        line_wave = line_waves_matched[spec_idx][i]
+        #line_wave = line_waves_matched[spec_idx][i]
+        line_wave = norm_wave[spec_idx][line_idx]
         
         xdata = norm_wave[spec_idx][line_idx-delta:line_idx+delta]
         ydata = norm_flux[spec_idx][line_idx-delta:line_idx+delta]
         
-        p0 = [-1, line_wave, 0.5, 1] # initial guess (norm, mu, sigma, shift)
+        global spl_spec
+        spl_spec = spl_funcs[spec_idx]
+        
+        # p0 = [-1, line_wave, 0.5, 1] # initial guess (norm, mu, sigma, shift)
+        p0 = [-1, line_wave, 0.5] #must grow ly-a from 1
+        
         try:
-            popt, pcov = curve_fit(gauss, xdata, ydata, p0=p0)
-            fit_flux = gauss(xdata, *popt)
+            popt, pcov = curve_fit(gauss_spl_conv, xdata, ydata, p0=p0)
+            fit_flux = gauss_spl_conv(xdata, *popt)
         
             fit_waves_spec.append(xdata)
             fit_fluxes_spec.append(fit_flux)
@@ -630,6 +728,8 @@ plt.plot(norm_wave[0], norm_flux[0], alpha=0.4, color='blue', ds='steps-mid')
 plt.plot(norm_wave[1], norm_flux[1], alpha=0.4, color='red', ds='steps-mid')
 plt.plot(norm_wave[0][line_idx_matched[0]], norm_flux[0][line_idx_matched[0]], 'b*')
 plt.plot(norm_wave[1][line_idx_matched[1]], norm_flux[1][line_idx_matched[1]], 'r*')
+plt.plot(norm_wave[0], spl1(norm_wave[0]), color='green')
+plt.plot(norm_wave[1], spl2(norm_wave[1]), color='orange')
 plt.axhline(1, color='black', alpha=0.5, ls='--', label='Norm')
 plt.axhline(perc_cut, color='red', alpha=0.5, ls='--', label='Percent Cutoff')
 plt.plot(err_waves[0], err_fluxes[0], 'gx', label='Fit Error')
@@ -700,27 +800,27 @@ plt.clf()
 
 # Plot Full Spectra ----------------------------------------------------------
 
-plt.figure(dpi=200)
+# plt.figure(dpi=200)
 
-plt.axhline(1, color='black', alpha=0.8)
-plt.plot(norm_wave[0], norm_flux[0], lw=1, alpha=0.7, \
-         label=spec_labels[0], ds='steps-mid', color='blue')
-plt.plot(norm_wave[1], norm_flux[1], lw=1, alpha=0.7, \
-         label=spec_labels[1], ds='steps-mid', color='red')
+# plt.axhline(1, color='black', alpha=0.8)
+# plt.plot(norm_wave[0], norm_flux[0], lw=1, alpha=0.7, \
+#          label=spec_labels[0], ds='steps-mid', color='blue')
+# plt.plot(norm_wave[1], norm_flux[1], lw=1, alpha=0.7, \
+#          label=spec_labels[1], ds='steps-mid', color='red')
 
-plt.xlabel('Rest Frame Wavelength (A)')
-plt.ylabel(r'Normalized Flux')
-plt.title('Removed Lines')
+# plt.xlabel('Rest Frame Wavelength (A)')
+# plt.ylabel(r'Normalized Flux')
+# plt.title('Removed Lines')
 
-plt.xlim(wave_min)
-plt.ylim(bottom=-0.1, top=2)
+# plt.xlim(wave_min)
+# plt.ylim(bottom=-0.1, top=2)
 
-plt.legend(fontsize=8)
+# plt.legend(fontsize=8)
 
-# plt.savefig((spec_dir+obj_name+'_cleaned.png'), format='png')
+# # plt.savefig((spec_dir+obj_name+'_cleaned.png'), format='png')
 
-plt.show()
+# plt.show()
 
-plt.clf()
+# plt.clf()
 
 
