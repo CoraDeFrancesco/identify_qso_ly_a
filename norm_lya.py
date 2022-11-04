@@ -490,7 +490,7 @@ plt.title(('Blue-Side Normalization '+obj_name+ ' '+ spec_mjd_1))
 plt.show()
 plt.clf()
 
-#%% Test Nrom Module
+#%% Test Norm Module
 
 import norm_module as nm
 

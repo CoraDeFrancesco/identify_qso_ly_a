@@ -33,24 +33,25 @@ from scipy.interpolate import UnivariateSpline
 
 # z = 3.3734 # redshift of object (float)
 
-obj_name = 'J085825'
-spec_dir = 'specs/J085825/' # data directory (with /)
-spec_file_1 = 'spec-0468-51912-0036-dered.txt' # spectrum 1 file name
-spec_file_2 = 'spec-3815-55537-0910.dr9' # spectrum 2 file name
-spec_mjd_1 = '51912' # MJD of spectrum 1
-spec_mjd_2 = '55537' # MjD of spectrum 2
+obj_name = 'J1646'
+spec_dir = 'specs/J1646/' # data directory (with /)
+spec_file_1 = 'spec-4181-55685-0543-dered.txt' # spectrum 1 file name
+spec_file_2 = 'spSpec-53167-1423-017_skysubDR.dr5' # spectrum 2 file name
+spec_mjd_1 = '55685' # MJD of spectrum 1
+spec_mjd_2 = '53167' # MjD of spectrum 2
 
-z = 2.8684 # redshift of object (float)
+z = 3.0329 # redshift of object (float)
 
-delta = 6 # Number of wavelength bins to fit in one gaussian abs line
+delta = 5 # Number of wavelength bins to fit in one gaussian abs line
 perc_cut=0.80 # Between 0 and 1. Percentage of normalized flux abs must exceed.
 wave_min=1060 # Min wavelength for finding peaks.
 wave_max=1200 # Maximum wavelength for finding peaks
 width=1 # Number of wavelength bins for a minimum to be considered a peak.
 wmax=1000 #Maximum width of abs lines in wavelength bins. The default is 5.
 distance=2 #Miminum distance in wavelength bins between potential abs lines.
-n_prom = 0.5 #how many times the noise level a peak must be
-spl_smooth = 3 #spline smoothing coefficient
+n_prom = 0.01 #how many times the noise level a peak must be
+spl_smooth = 4 #spline smoothing coefficient
+spl_deg = 3 #spline degree
 
 #-----------------------------------------------------------------------------
 # Functions
@@ -645,9 +646,9 @@ for i in range(0, len(norm_wave[0])): #wavelength aligned, so can use either one
 
 #Spline fitting with smoothing s and degree k
 spl1 = UnivariateSpline(norm_wave[0][spline_mask_1][wave_mask], \
-                        norm_flux[0][spline_mask_1][wave_mask], k=3, s=spl_smooth)
+                        norm_flux[0][spline_mask_1][wave_mask], k=spl_deg, s=spl_smooth)
 spl2 = UnivariateSpline(norm_wave[1][spline_mask_2][wave_mask], \
-                        norm_flux[1][spline_mask_2][wave_mask], k=3, s=spl_smooth)
+                        norm_flux[1][spline_mask_2][wave_mask], k=spl_deg, s=spl_smooth)
     
 spl_funcs = [spl1, spl2]
 
@@ -728,8 +729,8 @@ plt.plot(norm_wave[0], norm_flux[0], alpha=0.4, color='blue', ds='steps-mid')
 plt.plot(norm_wave[1], norm_flux[1], alpha=0.4, color='red', ds='steps-mid')
 plt.plot(norm_wave[0][line_idx_matched[0]], norm_flux[0][line_idx_matched[0]], 'b*')
 plt.plot(norm_wave[1][line_idx_matched[1]], norm_flux[1][line_idx_matched[1]], 'r*')
-plt.plot(norm_wave[0], spl1(norm_wave[0]), color='green')
-plt.plot(norm_wave[1], spl2(norm_wave[1]), color='orange')
+# plt.plot(norm_wave[0][spline_mask_1], spl1(norm_wave[0])[spline_mask_1], color='green')
+# plt.plot(norm_wave[1][spline_mask_1], spl2(norm_wave[1])[spline_mask_1], color='orange')
 plt.axhline(1, color='black', alpha=0.5, ls='--', label='Norm')
 plt.axhline(perc_cut, color='red', alpha=0.5, ls='--', label='Percent Cutoff')
 plt.plot(err_waves[0], err_fluxes[0], 'gx', label='Fit Error')
