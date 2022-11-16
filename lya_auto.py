@@ -24,33 +24,26 @@ from scipy.interpolate import UnivariateSpline
 # Setup
 #-----------------------------------------------------------------------------
 
-# obj_name = 'J075852'
-# spec_dir = 'specs/J075852/' # data directory (with /)
-# spec_file_1 = 'spec-2265-53674-0405-dered.txt' # spectrum 1 file name
-# spec_file_2 = 'spec-4506-55568-0824.dr9' # spectrum 2 file name
-# spec_mjd_1 = '53674' # MJD of spectrum 1
-# spec_mjd_2 = '53674' # MjD of spectrum 2
 
-# z = 3.3734 # redshift of object (float)
+obj_name = 'J085825'
+spec_dir = 'specs/J085825/' # data directory (with /)
+spec_file_1 = 'spec-0468-51912-0036-dered.txt' # spectrum 1 file name
+spec_file_2 = 'spec-3815-55537-0910.dr9' # spectrum 2 file name
+spec_mjd_1 = '51912' # MJD of spectrum 1
+spec_mjd_2 = '55537' # MjD of spectrum 2
 
-obj_name = 'J1646'
-spec_dir = 'specs/J1646/' # data directory (with /)
-spec_file_1 = 'spec-4181-55685-0543-dered.txt' # spectrum 1 file name
-spec_file_2 = 'spSpec-53167-1423-017_skysubDR.dr5' # spectrum 2 file name
-spec_mjd_1 = '55685' # MJD of spectrum 1
-spec_mjd_2 = '53167' # MjD of spectrum 2
+z = 2.8684 # redshift of object (float)
 
-z = 3.0329 # redshift of object (float)
-
-delta = 5 # Number of wavelength bins to fit in one gaussian abs line
+delta = 6 # Number of wavelength bins to fit in one gaussian abs line
+delta_spline = 5
 perc_cut=0.80 # Between 0 and 1. Percentage of normalized flux abs must exceed.
 wave_min=1060 # Min wavelength for finding peaks.
 wave_max=1200 # Maximum wavelength for finding peaks
 width=1 # Number of wavelength bins for a minimum to be considered a peak.
-wmax=1000 #Maximum width of abs lines in wavelength bins. The default is 5.
+wmax=200 #Maximum width of abs lines in wavelength bins. The default is 5.
 distance=2 #Miminum distance in wavelength bins between potential abs lines.
-n_prom = 0.01 #how many times the noise level a peak must be
-spl_smooth = 4 #spline smoothing coefficient
+n_prom = 2 #how many times the noise level a peak must be
+spl_smooth = 8 #spline smoothing coefficient
 spl_deg = 3 #spline degree
 
 #-----------------------------------------------------------------------------
@@ -101,6 +94,8 @@ def align_data(data_wave, data_flux, data_err, data_names=None, wave_min=1000.,\
         Errors at aligned wavebins (dimension = numspecs).
 
     """
+    
+    #TODO: add option to adjust negative flux values to zero.
     
     numspecs = len(data_wave)
     
@@ -260,8 +255,12 @@ def get_line_mins(wave, norm_flux, wave_min=900, wave_max=1216, prom=0.05,\
     x = -1*norm_flux
     
     border = -perc_cut*np.ones(x.size)
+    # peaks, properties = find_peaks(x, height=(border, 0), \
+    #                                distance=distance, width=(width, wmax), \
+    #                                prominence=(prom))
     peaks, properties = find_peaks(x, height=(border, 0), \
-                                   distance=distance, width=(width, wmax), prominence=(prom))
+                                   width=(width, wmax), \
+                                   prominence=(prom))
     
     line_mask = np.where((wave[peaks] >= wave_min) & (wave[peaks] <= wave_max))
     
@@ -355,6 +354,16 @@ def gauss_spl_conv(wave, *p):
     curve = gauss_curve * spl_curve
     
     return(curve)
+
+def gauss(wave, *p):
+    
+    # norm, mu, sigma, shift = p
+    norm, mu, sigma = p
+    shift = 1
+    
+    gauss_curve = shift+norm*np.exp(-(wave-mu)**2/(2.*sigma**2))
+
+    return(gauss_curve)
 
 def match_lines(line_idxs, distance):
     """
@@ -508,7 +517,7 @@ for i, align_flux in enumerate(align_fluxes):
 #     print(bos_norm)
 #     norm_flux.append(bos_norm)
     
-#%%
+# Norm
 
 # Check normalization --------------------------------------------------------
 
@@ -559,12 +568,12 @@ plt.show()
 
 plt.clf()
 
-# Find Noise -----------------------------------------------------------------
+#%% Find Noise -----------------------------------------------------------------
 
 prom1 = n_prom*get_noise(norm_wave[0], norm_flux[0], 1600, 1800)
 prom2 = n_prom*get_noise(norm_wave[1], norm_flux[1], 1600, 1800)
 
-# Find Peaks -----------------------------------------------------------------
+#%% Find Peaks -----------------------------------------------------------------
 
 line_waves1, line_fluxes1, line_idxs1 = get_line_mins(norm_wave[0], norm_flux[0], \
                                         perc_cut=perc_cut, wave_min=wave_min, \
@@ -580,7 +589,7 @@ line_waves = [line_waves1, line_waves2]
 line_fluxes = [line_fluxes1, line_fluxes2]
 line_idxs = [line_idxs1, line_idxs2]
 
-# Match Lines ----------------------------------------------------------------
+#%% Match Lines ----------------------------------------------------------------
 
 line_idx_matched = match_lines(line_idxs, distance)
 line_waves_matched = [norm_wave[0][line_idx_matched[0]], norm_wave[1][line_idx_matched[1]]]
@@ -629,7 +638,7 @@ for line_list in line_idx_matched:
     for idx in line_list:
         min_val = idx - delta
         max_val = idx + delta
-        idxs = np.linspace(min_val, max_val, (2*delta)+1)
+        idxs = np.linspace(min_val, max_val, (2*delta_spline)+1)
         lya_mask = np.concatenate((lya_mask, idxs))
     lya_mask = np.unique(lya_mask)
     lya_masks.append(lya_mask)
@@ -701,13 +710,15 @@ for spec_idx in [0,1]:
         
         # p0 = [-1, line_wave, 0.5, 1] # initial guess (norm, mu, sigma, shift)
         p0 = [-1, line_wave, 0.5] #must grow ly-a from 1
+        bounds = ((-np.inf, -np.inf, -np.inf), (0, np.inf, np.inf))
         
         try:
-            popt, pcov = curve_fit(gauss_spl_conv, xdata, ydata, p0=p0)
+            popt, pcov = curve_fit(gauss_spl_conv, xdata, ydata, p0=p0, bounds=bounds)
             fit_flux = gauss_spl_conv(xdata, *popt)
         
             fit_waves_spec.append(xdata)
-            fit_fluxes_spec.append(fit_flux)
+            #fit_fluxes_spec.append(fit_flux)
+            fit_fluxes_spec.append(gauss(xdata, *popt))
         except RuntimeError:
             print('RuntimeError for line', line_wave)
             err_waves_spec.append(line_wave)
@@ -719,14 +730,65 @@ for spec_idx in [0,1]:
     fit_fluxes.append(fit_fluxes_spec)
     err_waves.append(err_waves_spec)
     err_fluxes.append(err_fluxes_spec)
+    
+#%% Build Specutils Fitting --------------------------------------------------
+
+# # Make specutils spectrum instances for each spec
+
+# import astropy.units as u
+# import specutils
+# from specutils import Spectrum1D, SpectralRegion
+# from astropy.modeling import models
+# from specutils import analysis
+# from specutils import fitting
+# from specutils.manipulation import extract_region
+
+# fancy_spec1 = Spectrum1D(flux=(norm_flux[0]-1)*u.dimensionless_unscaled, \
+#                          spectral_axis=norm_wave[0]*u.Angstrom)
+# fancy_spec2 = Spectrum1D(flux=(norm_flux[1]-1)*u.dimensionless_unscaled, \
+#                          spectral_axis=norm_wave[0]*u.Angstrom)
+# fancy_spec_comb = Spectrum1D(flux=(norm_flux[0]-1, norm_flux[1]-1)*u.dimensionless_unscaled, \
+#                              spectral_axis=norm_wave[0]*u.Angstrom)
+
+# line_estimates1 = []    
+# line_estimates2 = []
+# for line in line_waves_matched[0]:
+    
+#     line = line*u.Angstrom
+#     line_region = SpectralRegion(line - delta*u.Angstrom, line + delta*u.Angstrom)
+#     line_spectrum = extract_region(fancy_spec_comb[0], line_region)
+#     line_estimate1 = fitting.estimate_line_parameters(line_spectrum, models.Gaussian1D())
+#     line_spectrum = extract_region(fancy_spec_comb[1], line_region)
+#     line_estimate2 = fitting.estimate_line_parameters(line_spectrum, models.Gaussian1D())
+    
+#     line_estimates1.append(line_estimate1)
+#     line_estimates2.append(line_estimate2)
+    
+# combined_model_estimate1 = np.sum(np.asarray(line_estimates1))
+# combined_model_estimate2 = np.sum(np.asarray(line_estimates2))
+
+# combined_model1 = fitting.fit_lines(fancy_spec1, combined_model_estimate1)
+
+# plt.figure(dpi=200)
+# plt.step(fancy_spec1.spectral_axis, fancy_spec1.flux, where='mid')
+# plt.plot(fancy_spec1.spectral_axis, 
+#          combined_model1(fancy_spec1.spectral_axis))  
+
+# plt.xlim(wave_min, wave_max)
+# plt.show()
+# plt.clf()
+    
+#combined_model
+
+#%% Remove lines -------------------------------------------------------------
 
 # Plot Ly-a fits -------------------------------------------------------------
     
     
 plt.figure(dpi=200)
 
-plt.plot(norm_wave[0], norm_flux[0], alpha=0.4, color='blue', ds='steps-mid')
-plt.plot(norm_wave[1], norm_flux[1], alpha=0.4, color='red', ds='steps-mid')
+plt.plot(norm_wave[0], norm_flux[0], alpha=0.7, color='blue', ds='steps-mid')
+plt.plot(norm_wave[1], norm_flux[1], alpha=0.7, color='red', ds='steps-mid')
 plt.plot(norm_wave[0][line_idx_matched[0]], norm_flux[0][line_idx_matched[0]], 'b*')
 plt.plot(norm_wave[1][line_idx_matched[1]], norm_flux[1][line_idx_matched[1]], 'r*')
 # plt.plot(norm_wave[0][spline_mask_1], spl1(norm_wave[0])[spline_mask_1], color='green')
@@ -738,11 +800,13 @@ plt.plot(err_waves[1], err_fluxes[1], 'gx')
 
 for spec_idx in [0,1]:
     
-    colors = ['blue', 'red']
+    # colors = ['blue', 'red']
+    colors=['black', 'black']
     
     for i, flux in enumerate(fit_fluxes[spec_idx]):
         
-        plt.plot(fit_waves[spec_idx][i], flux, 'r-', alpha=0.7, color=colors[spec_idx], lw=2)
+        plt.plot(fit_waves[spec_idx][i], flux+1, 'r-', alpha=0.3, \
+                 color=colors[spec_idx], lw=2)
 
 plt.xlabel('Rest Frame Wavelength (A)')
 plt.ylabel(r'Normalized Flux')
@@ -752,7 +816,7 @@ plt.legend(fontsize=8)
 
 plt.xlim(wave_min, wave_max)
 # plt.xlim(1080, 1140)
-plt.ylim(-0.1, 2)
+plt.ylim(-0.1, 2.1)
 
 plt.savefig((spec_dir+obj_name+'_fit_lines.png'), format='png')
 
@@ -789,7 +853,7 @@ plt.ylabel(r'Normalized Flux')
 plt.title('Removed Lines')
 
 plt.xlim(wave_min, wave_max)
-plt.ylim(bottom=-0.1, top=2)
+plt.ylim(bottom=-0.1, top=2.1)
 
 plt.legend(fontsize=8)
 
