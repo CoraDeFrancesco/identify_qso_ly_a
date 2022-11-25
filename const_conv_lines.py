@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from scipy.signal import peak_widths
 from scipy.interpolate import UnivariateSpline
+from scipy.interpolate import CubicSpline
 
 from specutils import Spectrum1D
 from specutils.fitting import find_lines_derivative
@@ -66,7 +67,7 @@ wmax=50 #Maximum width of abs lines in wavelength bins. The default is 5.
 distance=2 #Miminum distance in wavelength bins between potential abs lines.
 n_prom = 2 #how many times the noise level a peak must be
 
-# Functions ------------------------------------------------------------------
+#%% Functions ------------------------------------------------------------------
 
 def gauss(wave, *p):
     
@@ -307,7 +308,7 @@ prom2 = n_prom*get_noise(x, conv_2, 1160, 1180)
 
 
 
-#%%
+#%% Get peaks, match
 
 
 line_waves1, line_fluxes1, line_idxs1 = get_line_mins(x, conv_1, \
@@ -398,39 +399,150 @@ plt.clf()
 
 #Mask out positions of the Ly-a lines
 
-lya_masks = []
+# lya_masks = []
 
-for line_list in line_idx_matched:
-    lya_mask = np.asarray([])
-    for idx in line_list:
-        min_val = idx - delta
-        max_val = idx + delta
-        idxs = np.linspace(min_val, max_val, (2*delta)+1)
-        lya_mask = np.concatenate((lya_mask, idxs))
-    lya_mask = np.unique(lya_mask)
-    lya_masks.append(lya_mask)
+# for line_list in line_idx_matched:
+#     lya_mask = np.asarray([])
+#     for idx in line_list:
+#         min_val = idx - delta
+#         max_val = idx + delta
+#         idxs = np.linspace(min_val, max_val, (2*delta)+1)
+#         lya_mask = np.concatenate((lya_mask, idxs))
+#     lya_mask = np.unique(lya_mask)
+#     lya_masks.append(lya_mask)
 
-spline_mask_1 = []
-spline_mask_2 = []
-for i in range(0, len(x)):
-    if i not in lya_masks[0]:
-        spline_mask_1.append(i)
-    if i not in lya_masks[1]:
-        spline_mask_2.append(i)
+# spline_mask_1 = []
+# spline_mask_2 = []
+# for i in range(0, len(x)):
+#     if i not in lya_masks[0]:
+#         spline_mask_1.append(i)
+#     if i not in lya_masks[1]:
+#         spline_mask_2.append(i)
 
         
 
-#Spline fitting with smoothing s and degree k
-spl1 = UnivariateSpline(x[spline_mask_1], conv_1[spline_mask_1], s=1, k=3)
-spl2 = UnivariateSpline(x[spline_mask_2], conv_2[spline_mask_2], s=1, k=3)
+# #Spline fitting with smoothing s and degree k
+# spl1 = UnivariateSpline(x[spline_mask_1], conv_1[spline_mask_1], s=1, k=3)
+# spl2 = UnivariateSpline(x[spline_mask_2], conv_2[spline_mask_2], s=1, k=3)
 
-plt.figure(dpi=200)
-# plt.plot(x[spline_mask_1], conv_1[spline_mask_1], alpha=0.5, marker='o', ls='', ms=2)
-# plt.plot(x[spline_mask_2], conv_2[spline_mask_2], alpha=0.5, marker='o', ls='', ms=2)
-plt.plot(x, conv_1, alpha=0.5)
-plt.plot(x, conv_2, alpha=0.5)
-plt.plot(x, spl1(x))
-plt.plot(x, spl2(x))
+# plt.figure(dpi=200)
+# # plt.plot(x[spline_mask_1], conv_1[spline_mask_1], alpha=0.5, marker='o', ls='', ms=2)
+# # plt.plot(x[spline_mask_2], conv_2[spline_mask_2], alpha=0.5, marker='o', ls='', ms=2)
+# plt.plot(x, conv_1, alpha=0.5)
+# plt.plot(x, conv_2, alpha=0.5)
+# plt.plot(x, spl1(x))
+# plt.plot(x, spl2(x))
 
-plt.show()
-plt.clf()
+# plt.show()
+# plt.clf()
+
+#%% Dall'Aglio Spline Method
+
+# Divide spectrum into 16 pixel segments
+
+def split_spec(len_spec, len_seg):
+    
+    segs_idxs = []
+    
+    n_segs = int(len_spec / len_seg)
+    for n in range(1, n_segs+1):
+        seg_start = (n-1)*len_seg
+        seg_end = (n*len_seg) -1
+        new_seg = np.linspace(seg_start, seg_end, len_seg)
+        segs_idxs.append(new_seg.astype(int))
+
+    return(segs_idxs)
+
+def find_segs_cont(wave, flux, npix=25, s=0.5, k=3, noise_min=1125, noise_max=1175):
+    
+    spec_split = split_spec(len(wave), npix)
+
+    # Fit continuous cubic spline to each segment
+    
+    spl_fits1 = []
+    
+    for i, segment in enumerate(spec_split):
+        # get boundary conditions
+        #bbox = [1, 1]
+        spl1 = UnivariateSpline(wave[segment], flux[segment], s=s, k=k)
+        # spl1 = CubicSpline(x[segment], conv_1[segment])
+        
+        spl_fits1.append(spl1)
+        
+    plt.figure(dpi=200)
+    plt.plot(wave, flux, alpha=0.5)
+    # plt.plot(x, conv_2, alpha=0.5)
+    for i, segment in enumerate(spec_split):
+        plt.plot(wave[segment], spl_fits1[i](x[segment]), color='blue')
+    plt.ylim(-0.01, 2.1)
+    plt.show()
+    plt.clf()
+    
+    # Reject piexels in each segment which lie more than two sigma below the fit
+    
+    for i, segment in enumerate(spec_split): # refit one segment at a time
+    
+        seg_noise = np.std(flux[segment])
+        spec_noise = get_noise(wave, conv_1, noise_min, noise_max)
+        print('spec_noise = ', spec_noise)
+    
+        segment_ini = segment
+        
+        spl_flux = spl_fits1[i](wave[segment])
+        seg_flux = flux[segment]
+        seg_wave = wave[segment]
+        sigma_flux = np.std(seg_flux)
+        # print(sigma_flux)
+        
+        flux_dists = seg_flux - spl_flux
+        flux_dists_sigma = flux_dists / sigma_flux
+        print(flux_dists_sigma)
+        
+        # big_sig_mask = np.where(flux_dists_sigma <= -2.0)
+        big_sig_mask = np.where(flux_dists <= -spec_noise)
+        print('there are', len(big_sig_mask[0]), 'big sigs in segment', i)
+        print(big_sig_mask[0])
+        
+        big_counter = len(big_sig_mask[0])
+        while big_counter > 0:
+            print('refitting segment', i)
+            print(big_sig_mask[0])
+            segment = np.delete(segment, big_sig_mask[0])
+            
+            seg_flux = flux[segment]
+            seg_wave = wave[segment]
+            
+            spl_refit = UnivariateSpline(seg_wave, seg_flux, s=s, k=k)
+            
+            spl_fits1[i] = spl_refit
+            
+            spl_flux = spl_refit(x[segment])
+            
+            sigma_flux = np.std(seg_flux)
+            
+            flux_dists = seg_flux - spl_flux
+            flux_dists_sigma = flux_dists / sigma_flux
+            
+            # big_sig_mask = np.where(flux_dists_sigma <= -2.0)
+            big_sig_mask = np.where(flux_dists <= -spec_noise)
+            big_counter = len(big_sig_mask[0])
+            
+    plt.figure(dpi=200)
+    plt.plot(wave, flux, alpha=0.5)
+    # plt.plot(x, conv_2, alpha=0.5)
+    for i, segment in enumerate(spec_split):
+        plt.plot(wave[segment], spl_fits1[i](x[segment]), color='blue')
+    plt.ylim(-0.01, 2.1)
+    plt.show()
+    plt.clf()     
+    
+    #TODO: return array of concatenated segment fluxes.
+    
+    spl_model_out = np.array([])
+    for i, segment in enumerate(spec_split):
+        spl_model_out = np.concatenate((spl_model_out, spl_fits1[i](x[segment])))
+
+    return(spl_model_out)
+
+spl_model_1 = find_segs_cont(x, conv_1)
+spl_model_2 = find_segs_cont(x, conv_2)

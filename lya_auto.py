@@ -19,22 +19,24 @@ from scipy.signal import peak_widths
 from scipy.optimize import curve_fit
 import norm_module as nm
 from scipy.interpolate import UnivariateSpline
+from scipy.interpolate import CubicSpline
+from scipy.interpolate import splprep, splev, make_interp_spline
 
 #-----------------------------------------------------------------------------
 # Setup
 #-----------------------------------------------------------------------------
 
 
-obj_name = 'J085825'
-spec_dir = 'specs/J085825/' # data directory (with /)
-spec_file_1 = 'spec-0468-51912-0036-dered.txt' # spectrum 1 file name
-spec_file_2 = 'spec-3815-55537-0910.dr9' # spectrum 2 file name
-spec_mjd_1 = '51912' # MJD of spectrum 1
-spec_mjd_2 = '55537' # MjD of spectrum 2
+obj_name = 'J075852'
+spec_dir = 'specs/J075852/' # data directory (with /)
+spec_file_1 = 'spec-2265-53674-0405-dered.txt' # spectrum 1 file name
+spec_file_2 = 'spec-4506-55568-0824.dr9' # spectrum 2 file name
+spec_mjd_1 = '53674' # MJD of spectrum 1
+spec_mjd_2 = '55568' # MjD of spectrum 2
 
-z = 2.8684 # redshift of object (float)
+z = 3.3734 # redshift of object (float)
 
-delta = 6 # Number of wavelength bins to fit in one gaussian abs line
+delta = 10 # Number of wavelength bins to fit in one gaussian abs line
 delta_spline = 5
 perc_cut=0.80 # Between 0 and 1. Percentage of normalized flux abs must exceed.
 wave_min=1060 # Min wavelength for finding peaks.
@@ -43,11 +45,11 @@ width=1 # Number of wavelength bins for a minimum to be considered a peak.
 wmax=200 #Maximum width of abs lines in wavelength bins. The default is 5.
 distance=2 #Miminum distance in wavelength bins between potential abs lines.
 n_prom = 2 #how many times the noise level a peak must be
-spl_smooth = 8 #spline smoothing coefficient
+spl_smooth = 2 #spline smoothing coefficient
 spl_deg = 3 #spline degree
 
 #-----------------------------------------------------------------------------
-# Functions
+#%% Functions
 #-----------------------------------------------------------------------------
 
 def align_data(data_wave, data_flux, data_err, data_names=None, wave_min=1000.,\
@@ -350,7 +352,7 @@ def gauss_spl_conv(wave, *p):
     shift = 1
     
     gauss_curve = shift+norm*np.exp(-(wave-mu)**2/(2.*sigma**2))
-    spl_curve = spl_spec(wave)
+    spl_curve = spl_spec
     curve = gauss_curve * spl_curve
     
     return(curve)
@@ -421,6 +423,104 @@ def get_noise(data_wave, data_flux, wave_min, wave_max):
     noise=np.std(reg_flux)
     
     return(noise)
+
+def split_spec(len_spec, len_seg):
+    
+    segs_idxs = []
+    
+    n_segs = int(len_spec / len_seg)
+    for n in range(1, n_segs+1):
+        seg_start = (n-1)*len_seg
+        seg_end = (n*len_seg) -1
+        new_seg = np.linspace(seg_start, seg_end, len_seg)
+        segs_idxs.append(new_seg.astype(int))
+
+    return(segs_idxs)
+
+def find_segs_cont(wave, flux, npix=25, s=1000, k=3, noise_min=1125, noise_max=1175):
+    
+    spec_split = split_spec(len(wave), npix)
+
+    # Fit continuous cubic spline to each segment
+    
+    spl_fits1 = []
+    
+    
+    for i, segment in enumerate(spec_split):
+        
+        # print('segment', i+1, 'of', len(spec_split))
+        spl1 = UnivariateSpline(wave[segment], flux[segment], s=s, k=k)
+        spl_fits1.append(spl1)
+        
+    plt.figure(dpi=200)
+    plt.plot(wave, flux, alpha=0.5)
+    for i, segment in enumerate(spec_split):
+        plt.plot(wave[segment], spl_fits1[i](wave[segment]), color='blue')
+    plt.ylim(-0.01, 2.1)
+    plt.xlim(wave_min, wave_max)
+    plt.show()
+    plt.clf()
+    
+    # Reject piexels in each segment which lie more than two sigma below the fit
+    
+    for i, segment in enumerate(spec_split): # refit one segment at a time
+    
+    
+        seg_noise = np.std(flux[segment])
+        spec_noise = get_noise(wave, flux, noise_min, noise_max)
+        # print('spec_noise = ', spec_noise)
+    
+        segment_ini = segment
+        
+        spl_flux = spl_fits1[i](wave[segment])
+        seg_flux = flux[segment]
+        seg_wave = wave[segment]
+        sigma_flux = np.std(seg_flux)
+        
+        flux_dists = seg_flux - spl_flux
+        flux_dists_sigma = flux_dists / sigma_flux
+
+        big_sig_mask = np.where(flux_dists <= -spec_noise)
+
+        big_counter = len(big_sig_mask[0])
+        while big_counter > 0:
+
+            segment = np.delete(segment, big_sig_mask[0])
+
+            seg_flux = flux[segment]
+            seg_wave = wave[segment]
+            
+            spl_refit = UnivariateSpline(seg_wave, seg_flux, s=s, k=k)
+            
+            spl_fits1[i] = spl_refit
+            
+            seg_flux = flux[segment]
+            spl_flux = spl_refit(wave[segment])
+            sigma_flux = np.std(seg_flux)
+            
+            flux_dists = seg_flux - spl_flux
+            flux_dists_sigma = flux_dists / sigma_flux
+            
+            # big_sig_mask = np.where(flux_dists_sigma <= -2.0)
+            big_sig_mask = np.where(flux_dists <= -spec_noise)
+            big_counter = len(big_sig_mask[0])
+            
+    plt.figure(dpi=200)
+    plt.plot(wave, flux, alpha=0.5)
+    for i, segment in enumerate(spec_split):
+        plt.plot(wave[segment], spl_fits1[i](wave[segment]), color='blue')
+    plt.ylim(-0.01, 2.1)
+    plt.xlim(wave_min, wave_max)
+    plt.show()
+    plt.clf()     
+    
+    spl_model_out = np.array([])
+    for i, segment in enumerate(spec_split):
+        spl_model_out = np.concatenate((spl_model_out, spl_fits1[i](wave[segment])))
+    diff_len = len(wave) - len(spl_model_out)
+    spl_model_out = np.concatenate((spl_model_out, np.ones(diff_len)))
+
+    return(spl_model_out)
 
 #-----------------------------------------------------------------------------
 # Execution
@@ -628,36 +728,40 @@ plt.clf()
 
 #%% Smooth specs, fit spline ---------------------------------------------------
 
-wave_mask = np.where((norm_wave[0] >= wave_min) & (norm_wave[0] <= wave_max))
+# Get wavelengths within Ly-a fitting region
+# wave_mask = np.where((norm_wave[0] >= wave_min) & (norm_wave[0] <= wave_max))
 
-#Mask out positions of the Ly-a lines
-lya_masks = []
+# #Mask out positions of the Ly-a lines
+# lya_masks = []
 
-for line_list in line_idx_matched:
-    lya_mask = np.asarray([])
-    for idx in line_list:
-        min_val = idx - delta
-        max_val = idx + delta
-        idxs = np.linspace(min_val, max_val, (2*delta_spline)+1)
-        lya_mask = np.concatenate((lya_mask, idxs))
-    lya_mask = np.unique(lya_mask)
-    lya_masks.append(lya_mask)
+# for line_list in line_idx_matched:
+#     lya_mask = np.asarray([])
+#     for idx in line_list:
+#         min_val = idx - delta_spline
+#         max_val = idx + delta_spline
+#         idxs = np.linspace(min_val, max_val, (2*delta_spline)+1)
+#         lya_mask = np.concatenate((lya_mask, idxs))
+#     lya_mask = np.unique(lya_mask)
+#     lya_masks.append(lya_mask)
 
-spline_mask_1 = []
-spline_mask_2 = []
+# spline_mask_1 = []
+# spline_mask_2 = []
 
 
-for i in range(0, len(norm_wave[0])): #wavelength aligned, so can use either one
-    if i not in lya_masks[0]:
-        spline_mask_1.append(i)
-    if i not in lya_masks[1]:
-        spline_mask_2.append(i)  
+# for i in range(0, len(norm_wave[0])): #wavelength aligned, so can use either one
+#     if i not in lya_masks[0]:
+#         spline_mask_1.append(i)
+#     if i not in lya_masks[1]:
+#         spline_mask_2.append(i)  
 
 #Spline fitting with smoothing s and degree k
-spl1 = UnivariateSpline(norm_wave[0][spline_mask_1][wave_mask], \
-                        norm_flux[0][spline_mask_1][wave_mask], k=spl_deg, s=spl_smooth)
-spl2 = UnivariateSpline(norm_wave[1][spline_mask_2][wave_mask], \
-                        norm_flux[1][spline_mask_2][wave_mask], k=spl_deg, s=spl_smooth)
+# spl1 = UnivariateSpline(norm_wave[0][spline_mask_1][wave_mask], \
+#                         norm_flux[0][spline_mask_1][wave_mask], k=spl_deg, s=spl_smooth)
+# spl2 = UnivariateSpline(norm_wave[1][spline_mask_2][wave_mask], \
+#                         norm_flux[1][spline_mask_2][wave_mask], k=spl_deg, s=spl_smooth)
+
+spl1 = find_segs_cont(norm_wave[0], norm_flux[0], noise_min=1600, noise_max=1800)
+spl2 = find_segs_cont(norm_wave[1], norm_flux[1], noise_min=1600, noise_max=1800)
     
 spl_funcs = [spl1, spl2]
 
@@ -666,8 +770,8 @@ plt.plot(norm_wave[0], norm_flux[0], lw=1, alpha=0.2, \
           label=spec_labels[0], ds='steps-mid', color='blue')
 plt.plot(norm_wave[1], norm_flux[1], lw=1, alpha=0.2, \
           label=spec_labels[1], ds='steps-mid', color='red')
-plt.plot(norm_wave[0], spl1(norm_wave[0]), color='green')
-plt.plot(norm_wave[1], spl2(norm_wave[1]), color='orange')
+plt.plot(norm_wave[0], spl1, color='green')
+plt.plot(norm_wave[1], spl2, color='orange')
 
 plt.xlim(wave_min, wave_max)
 plt.ylim(0, 2)
@@ -702,15 +806,22 @@ for spec_idx in [0,1]:
         #line_wave = line_waves_matched[spec_idx][i]
         line_wave = norm_wave[spec_idx][line_idx]
         
-        xdata = norm_wave[spec_idx][line_idx-delta:line_idx+delta]
-        ydata = norm_flux[spec_idx][line_idx-delta:line_idx+delta]
+        min_idx = line_idx-delta
+        max_idx = line_idx+delta
+        if min_idx <= 0:
+            min_idx = 0
+        elif max_idx >=  len(norm_wave[0]):
+            max_idx = len(norm_wave[0])
+        
+        xdata = norm_wave[spec_idx][min_idx:max_idx]
+        ydata = norm_flux[spec_idx][min_idx:max_idx]
         
         global spl_spec
-        spl_spec = spl_funcs[spec_idx]
+        spl_spec = spl_funcs[spec_idx][min_idx:max_idx]
         
         # p0 = [-1, line_wave, 0.5, 1] # initial guess (norm, mu, sigma, shift)
         p0 = [-1, line_wave, 0.5] #must grow ly-a from 1
-        bounds = ((-np.inf, -np.inf, -np.inf), (0, np.inf, np.inf))
+        bounds = ((-np.inf, line_wave-0.5, 0), (0, line_wave+0.5, 0.5))
         
         try:
             popt, pcov = curve_fit(gauss_spl_conv, xdata, ydata, p0=p0, bounds=bounds)
@@ -731,54 +842,6 @@ for spec_idx in [0,1]:
     err_waves.append(err_waves_spec)
     err_fluxes.append(err_fluxes_spec)
     
-#%% Build Specutils Fitting --------------------------------------------------
-
-# # Make specutils spectrum instances for each spec
-
-# import astropy.units as u
-# import specutils
-# from specutils import Spectrum1D, SpectralRegion
-# from astropy.modeling import models
-# from specutils import analysis
-# from specutils import fitting
-# from specutils.manipulation import extract_region
-
-# fancy_spec1 = Spectrum1D(flux=(norm_flux[0]-1)*u.dimensionless_unscaled, \
-#                          spectral_axis=norm_wave[0]*u.Angstrom)
-# fancy_spec2 = Spectrum1D(flux=(norm_flux[1]-1)*u.dimensionless_unscaled, \
-#                          spectral_axis=norm_wave[0]*u.Angstrom)
-# fancy_spec_comb = Spectrum1D(flux=(norm_flux[0]-1, norm_flux[1]-1)*u.dimensionless_unscaled, \
-#                              spectral_axis=norm_wave[0]*u.Angstrom)
-
-# line_estimates1 = []    
-# line_estimates2 = []
-# for line in line_waves_matched[0]:
-    
-#     line = line*u.Angstrom
-#     line_region = SpectralRegion(line - delta*u.Angstrom, line + delta*u.Angstrom)
-#     line_spectrum = extract_region(fancy_spec_comb[0], line_region)
-#     line_estimate1 = fitting.estimate_line_parameters(line_spectrum, models.Gaussian1D())
-#     line_spectrum = extract_region(fancy_spec_comb[1], line_region)
-#     line_estimate2 = fitting.estimate_line_parameters(line_spectrum, models.Gaussian1D())
-    
-#     line_estimates1.append(line_estimate1)
-#     line_estimates2.append(line_estimate2)
-    
-# combined_model_estimate1 = np.sum(np.asarray(line_estimates1))
-# combined_model_estimate2 = np.sum(np.asarray(line_estimates2))
-
-# combined_model1 = fitting.fit_lines(fancy_spec1, combined_model_estimate1)
-
-# plt.figure(dpi=200)
-# plt.step(fancy_spec1.spectral_axis, fancy_spec1.flux, where='mid')
-# plt.plot(fancy_spec1.spectral_axis, 
-#          combined_model1(fancy_spec1.spectral_axis))  
-
-# plt.xlim(wave_min, wave_max)
-# plt.show()
-# plt.clf()
-    
-#combined_model
 
 #%% Remove lines -------------------------------------------------------------
 
