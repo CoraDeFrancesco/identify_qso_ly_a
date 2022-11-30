@@ -437,7 +437,7 @@ def split_spec(len_spec, len_seg):
 
     return(segs_idxs)
 
-def find_segs_cont(wave, flux, npix=25, s=1000, k=3, noise_min=1125, noise_max=1175):
+def find_segs_cont(wave, flux, npix=20, s=1000, k=3, noise_min=1125, noise_max=1175):
     
     spec_split = split_spec(len(wave), npix)
 
@@ -727,38 +727,6 @@ plt.show()
 plt.clf()
 
 #%% Smooth specs, fit spline ---------------------------------------------------
-
-# Get wavelengths within Ly-a fitting region
-# wave_mask = np.where((norm_wave[0] >= wave_min) & (norm_wave[0] <= wave_max))
-
-# #Mask out positions of the Ly-a lines
-# lya_masks = []
-
-# for line_list in line_idx_matched:
-#     lya_mask = np.asarray([])
-#     for idx in line_list:
-#         min_val = idx - delta_spline
-#         max_val = idx + delta_spline
-#         idxs = np.linspace(min_val, max_val, (2*delta_spline)+1)
-#         lya_mask = np.concatenate((lya_mask, idxs))
-#     lya_mask = np.unique(lya_mask)
-#     lya_masks.append(lya_mask)
-
-# spline_mask_1 = []
-# spline_mask_2 = []
-
-
-# for i in range(0, len(norm_wave[0])): #wavelength aligned, so can use either one
-#     if i not in lya_masks[0]:
-#         spline_mask_1.append(i)
-#     if i not in lya_masks[1]:
-#         spline_mask_2.append(i)  
-
-#Spline fitting with smoothing s and degree k
-# spl1 = UnivariateSpline(norm_wave[0][spline_mask_1][wave_mask], \
-#                         norm_flux[0][spline_mask_1][wave_mask], k=spl_deg, s=spl_smooth)
-# spl2 = UnivariateSpline(norm_wave[1][spline_mask_2][wave_mask], \
-#                         norm_flux[1][spline_mask_2][wave_mask], k=spl_deg, s=spl_smooth)
 
 spl1 = find_segs_cont(norm_wave[0], norm_flux[0], noise_min=1600, noise_max=1800)
 spl2 = find_segs_cont(norm_wave[1], norm_flux[1], noise_min=1600, noise_max=1800)

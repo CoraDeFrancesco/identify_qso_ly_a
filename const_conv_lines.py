@@ -12,17 +12,8 @@ from scipy.signal import find_peaks
 from scipy.signal import peak_widths
 from scipy.interpolate import UnivariateSpline
 from scipy.interpolate import CubicSpline
-
-from specutils import Spectrum1D
-from specutils.fitting import find_lines_derivative
-from specutils.fitting import find_lines_threshold
-from astropy import units as u
-from specutils import SpectralRegion
-from specutils.fitting import estimate_line_parameters
-from specutils.manipulation import extract_region
-from astropy.modeling import models
-from specutils.manipulation import noise_region_uncertainty
-from specutils.manipulation import median_smooth
+from scipy.interpolate import splprep, splev, make_interp_spline, splrep
+from scipy.optimize import minimize
 
 # Setup ----------------------------------------------------------------------
 
@@ -151,99 +142,6 @@ def get_noise(data_wave, data_flux, wave_min, wave_max):
     noise=np.std(reg_flux)
     
     return(noise)
-
-#%% Building specutils get line mins ------------------------------------------
-
-def get_line_mins_specutils(wave, flux, delta):
-    
-    wave = u.Quantity(wave, u.Angstrom)
-    flux = flux*u.dimensionless_unscaled
-    flux_fit = flux-1
-    spectrum = Spectrum1D(flux=flux_fit, spectral_axis=wave)
-    
-
-    noise_reg = SpectralRegion(1025*u.angstrom, 1030*u.Angstrom)
-    spectrum = noise_region_uncertainty(spectrum, noise_reg)
-    spectrum_smooth = median_smooth(spectrum, width=5)
-    
-    plt.figure(dpi=200)
-    plt.plot(spectrum_smooth.spectral_axis, spectrum_smooth.flux)
-    plt.title('smoothed')
-    plt.show()
-    plt.clf()
-    
-    table_out = find_lines_derivative(spectrum_smooth)
-    #print(table_out)
-    
-    line_centers = table_out['line_center']
-    line_type = table_out['line_type']
-    line_center_index = np.asarray(table_out['line_center_index'])
-    
-    abs_idxs = np.where(line_type == 'absorption')
-    
-    line_mins_wave = line_centers[abs_idxs]
-    line_mins_idxs = line_center_index[abs_idxs]
-    line_mins_flux = flux[line_mins_idxs].value
-    
-    
-    #for each line, get the std of its gaussian profile
-    #ignore the super tiny and super big ones
-    
-    keep_idxs = []
-    line_params_save = []
-    sigs_list=[]
-    for i, line_wave in enumerate(line_mins_wave):
-        
-        
-        
-        min_idx = delta
-        max_idx = len(wave) - 1 - delta
-        if line_mins_idxs[i] <= min_idx:
-            wave_min = wave[0]
-            wave_max = wave[line_mins_idxs[i] + delta]
-        elif line_mins_idxs[i] >=  max_idx:
-            wave_min = wave[line_mins_idxs[i] - delta]
-            wave_max = wave[-1]
-        else:   
-            wave_min = wave[line_mins_idxs[i] - delta]
-            wave_max = wave[line_mins_idxs[i] + delta]
-        
-        sub_region = SpectralRegion(wave_min, wave_max)
-        sub_spec = extract_region(spectrum, sub_region)
-        
-        line_params = estimate_line_parameters(sub_spec, models.Gaussian1D())
-        # amplitude = line_params.amplitude
-        #print('amplitude = ', amplitude.value)
-        
-        
-        #print(line_mins_flux[i])
-        if (line_mins_flux[i] < 0.8):
-            # and (line_params.stddev.value > 1)\
-            # and (line_params.stddev.value < 4):
-                 # and (line_params.amplitude < 0.):
-                     
-            plt.figure(dpi=100)
-            plt.plot(sub_spec.spectral_axis, sub_spec.flux)
-            plt.title('sub spec')
-            plt.show()
-            plt.clf()
-            
-            keep_idxs.append(i)
-            line_params_save.append(line_params)
-            # sigs_list.append(line_params.stddev.value)
-            #print(line_params)
-    # plt.figure(dpi=200) 
-    # plt.hist(sigs_list)
-    # plt.show()
-    # plt.clf()       
-                
-    line_mins_wave = line_centers[abs_idxs][keep_idxs].value
-    line_mins_idxs = line_center_index[abs_idxs][keep_idxs]
-    line_mins_flux = line_mins_flux[keep_idxs]
-
-    return(line_mins_wave, line_mins_flux, line_mins_idxs, line_params_save)
-
-
     
     
 
@@ -295,16 +193,6 @@ prom1 = n_prom*get_noise(x, conv_1, 1160, 1180)
 prom2 = n_prom*get_noise(x, conv_2, 1160, 1180)
 
 # Find Peaks -----------------------------------------------------------------
-
-
-
-#%% Testing specutils get line mins
-
-# line_waves1, line_fluxes1, line_idxs1, lps1 = get_line_mins_specutils(x, conv_1, delta)
-
-# line_waves2, line_fluxes2, line_idxs2, lps2 = get_line_mins_specutils(x, conv_2, delta)
-
-
 
 
 
@@ -536,7 +424,6 @@ def find_segs_cont(wave, flux, npix=25, s=0.5, k=3, noise_min=1125, noise_max=11
     plt.show()
     plt.clf()     
     
-    #TODO: return array of concatenated segment fluxes.
     
     spl_model_out = np.array([])
     for i, segment in enumerate(spec_split):
@@ -544,5 +431,146 @@ def find_segs_cont(wave, flux, npix=25, s=0.5, k=3, noise_min=1125, noise_max=11
 
     return(spl_model_out)
 
-spl_model_1 = find_segs_cont(x, conv_1)
-spl_model_2 = find_segs_cont(x, conv_2)
+def guess(x, y, k, s, w=None):
+    """Do an ordinary spline fit to provide knots (credit:@askewchan)"""
+    return splrep(x, y, w, k=k, s=s)
+
+def err(c, x, y, t, k, w=None):
+    """The error function to minimize (credit:@askewchan)"""
+    diff = y - splev(x, (t, c, k))
+    if w is None:
+        diff = np.einsum('...i,...i', diff, diff)
+    else:
+        diff = np.dot(diff*diff, w)
+    return np.abs(diff)
+
+def spline_neumann(x, y, k=3, s=0, w=None):
+    '''
+    (credit:@askewchan)
+
+    Parameters
+    ----------
+    x : TYPE
+        DESCRIPTION.
+    y : TYPE
+        DESCRIPTION.
+    k : TYPE, optional
+        DESCRIPTION. The default is 3.
+    s : TYPE, optional
+        DESCRIPTION. The default is 0.
+    w : TYPE, optional
+        DESCRIPTION. The default is None.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    '''
+    t, c0, k = guess(x, y, k, s, w=w)
+    x0 = x[0] # point at which zero slope is required (first point)
+    x_end = x[-1] #also require zero slope at end
+    con = {'type': 'eq',
+           'fun': lambda c: splev([x0,x_end], (t, c, k), der=1),
+           #'jac': lambda c: splev(x0, (t, c, k), der=2) # doesn't help, dunno why
+           }
+    opt = minimize(err, c0, (x, y, t, k, w), constraints=con)
+    copt = opt.x
+    return UnivariateSpline._from_tck((t, copt, k))
+
+def find_segs_cont_bound(wave, flux, npix=25, s=5, k=3, noise_min=1125, noise_max=1175):
+    
+    spec_split = split_spec(len(wave), npix)
+
+    # Fit continuous cubic spline to each segment
+    
+    spl_fits1 = []
+    
+    for i, segment in enumerate(spec_split):
+        # get boundary conditions
+        #bbox = [1, 1]
+        # sp0 = UnivariateSpline(wave[segment], flux[segment], k=k, s=s)
+        spl1 = spline_neumann(wave[segment], flux[segment], k=k, s=s)
+        # spl1 = UnivariateSpline(wave[segment], flux[segment], s=s, k=k)
+        # spl1 = CubicSpline(x[segment], conv_1[segment])
+        
+        spl_fits1.append(spl1)
+        
+    plt.figure(dpi=200)
+    plt.plot(wave, flux, alpha=0.5)
+    # plt.plot(x, conv_2, alpha=0.5)
+    for i, segment in enumerate(spec_split):
+        plt.plot(wave[segment], spl_fits1[i](x[segment]), color='blue')
+    plt.ylim(-0.01, 2.1)
+    plt.show()
+    plt.clf()
+    
+    # Reject piexels in each segment which lie more than two sigma below the fit
+    
+    for i, segment in enumerate(spec_split): # refit one segment at a time
+    
+        seg_noise = np.std(flux[segment])
+        spec_noise = get_noise(wave, conv_1, noise_min, noise_max)
+        print('spec_noise = ', spec_noise)
+    
+        segment_ini = segment
+        
+        spl_flux = spl_fits1[i](wave[segment])
+        seg_flux = flux[segment]
+        seg_wave = wave[segment]
+        sigma_flux = np.std(seg_flux)
+        # print(sigma_flux)
+        
+        flux_dists = seg_flux - spl_flux
+        flux_dists_sigma = flux_dists / sigma_flux
+        print(flux_dists_sigma)
+        
+        # big_sig_mask = np.where(flux_dists_sigma <= -2.0)
+        big_sig_mask = np.where(flux_dists <= -spec_noise)
+        print('there are', len(big_sig_mask[0]), 'big sigs in segment', i)
+        print(big_sig_mask[0])
+        
+        big_counter = len(big_sig_mask[0])
+        while big_counter > 0:
+            print('refitting segment', i)
+            print(big_sig_mask[0])
+            segment = np.delete(segment, big_sig_mask[0])
+            
+            seg_flux = flux[segment]
+            seg_wave = wave[segment]
+            
+            sp0_refit = UnivariateSpline(wave[segment], flux[segment], k=k, s=s)
+            # spl1 = spline_neumann(wave[segment], flux[segment], k=k, s=s)
+            spl_refit = spline_neumann(seg_wave, seg_flux, s=s, k=k)
+            
+            spl_fits1[i] = spl_refit
+            
+            spl_flux = spl_refit(x[segment])
+            
+            sigma_flux = np.std(seg_flux)
+            
+            flux_dists = seg_flux - spl_flux
+            flux_dists_sigma = flux_dists / sigma_flux
+            
+            # big_sig_mask = np.where(flux_dists_sigma <= -2.0)
+            big_sig_mask = np.where(flux_dists <= -spec_noise)
+            big_counter = len(big_sig_mask[0])
+            
+    plt.figure(dpi=200)
+    plt.plot(wave, flux, alpha=0.5)
+    # plt.plot(x, conv_2, alpha=0.5)
+    for i, segment in enumerate(spec_split):
+        plt.plot(wave[segment], spl_fits1[i](x[segment]), color='blue')
+    plt.ylim(-0.01, 2.1)
+    plt.show()
+    plt.clf()     
+    
+    
+    spl_model_out = np.array([])
+    for i, segment in enumerate(spec_split):
+        spl_model_out = np.concatenate((spl_model_out, spl_fits1[i](x[segment])))
+
+    return(spl_model_out)
+
+spl_model_1 = find_segs_cont_bound(x, conv_1)
+spl_model_2 = find_segs_cont_bound(x, conv_2)
