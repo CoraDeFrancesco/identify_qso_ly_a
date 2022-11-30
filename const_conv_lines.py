@@ -444,22 +444,24 @@ def err(c, x, y, t, k, w=None):
         diff = np.dot(diff*diff, w)
     return np.abs(diff)
 
-def spline_neumann(x, y, k=3, s=0, w=None):
+def spline_neumann(x, y, k=3, s=0, w=None, anchor=None):
     '''
-    (credit:@askewchan)
+    Spline fitting with smoothing and boundary conditions. (credit:@askewchan)
 
     Parameters
     ----------
-    x : TYPE
-        DESCRIPTION.
-    y : TYPE
-        DESCRIPTION.
-    k : TYPE, optional
-        DESCRIPTION. The default is 3.
-    s : TYPE, optional
-        DESCRIPTION. The default is 0.
-    w : TYPE, optional
-        DESCRIPTION. The default is None.
+    x : arr
+        wavelength array.
+    y : arr
+        flux array.
+    k : int, optional
+        Degree of polynomial spline. The default is 3.
+    s : float, optional
+        Smoothing factor. The default is 0.
+    w : arr, optional
+        Wights. The default is None.
+    anchor : float, optional
+        Anchor flux value from previous segment.
 
     Returns
     -------
@@ -467,13 +469,20 @@ def spline_neumann(x, y, k=3, s=0, w=None):
         DESCRIPTION.
 
     '''
+    if anchor:
+        con = ({'type': 'eq', \
+               'fun': lambda c: splev([x0,x_end], (t, c, k), der=1)},
+               {'type': 'eq', 'fun': lambda c: c[0] - anchor})
+    else:
+        con = ({'type': 'eq', \
+               'fun': lambda c: splev([x0,x_end], (t, c, k), der=1)})
+        
     t, c0, k = guess(x, y, k, s, w=w)
     x0 = x[0] # point at which zero slope is required (first point)
     x_end = x[-1] #also require zero slope at end
-    con = {'type': 'eq',
-           'fun': lambda c: splev([x0,x_end], (t, c, k), der=1),
-           #'jac': lambda c: splev(x0, (t, c, k), der=2) # doesn't help, dunno why
-           }
+    # con = ({'type': 'eq', \
+    #        'fun': lambda c: splev([x0,x_end], (t, c, k), der=1)},
+    #        {'type': 'eq', 'fun': lambda c: c[0] - 1})
     opt = minimize(err, c0, (x, y, t, k, w), constraints=con)
     copt = opt.x
     return UnivariateSpline._from_tck((t, copt, k))
@@ -490,7 +499,11 @@ def find_segs_cont_bound(wave, flux, npix=25, s=5, k=3, noise_min=1125, noise_ma
         # get boundary conditions
         #bbox = [1, 1]
         # sp0 = UnivariateSpline(wave[segment], flux[segment], k=k, s=s)
-        spl1 = spline_neumann(wave[segment], flux[segment], k=k, s=s)
+        if i==0:
+            anchor=None
+        else:
+            anchor=spl_fits1[i-1](spec_split[i-1])[-1]
+        spl1 = spline_neumann(wave[segment], flux[segment], k=k, s=s, anchor=anchor)
         # spl1 = UnivariateSpline(wave[segment], flux[segment], s=s, k=k)
         # spl1 = CubicSpline(x[segment], conv_1[segment])
         
