@@ -469,25 +469,30 @@ def spline_neumann(x, y, k=3, s=0, w=None, anchor=None):
         DESCRIPTION.
 
     '''
-    if anchor:
-        con = ({'type': 'eq', \
-               'fun': lambda c: splev([x0,x_end], (t, c, k), der=1)},
-               {'type': 'eq', 'fun': lambda c: c[0] - anchor})
-    else:
-        con = ({'type': 'eq', \
-               'fun': lambda c: splev([x0,x_end], (t, c, k), der=1)})
+    
         
     t, c0, k = guess(x, y, k, s, w=w)
     x0 = x[0] # point at which zero slope is required (first point)
     x_end = x[-1] #also require zero slope at end
-    # con = ({'type': 'eq', \
-    #        'fun': lambda c: splev([x0,x_end], (t, c, k), der=1)},
-    #        {'type': 'eq', 'fun': lambda c: c[0] - 1})
+    if anchor:
+        print('anchoring at', anchor)
+        con = ({'type': 'eq', 'fun': lambda c: x0 - anchor}, \
+               {'type': 'eq', \
+                'fun': lambda c: splev([x_end], (t, c, k), der=1)}, \
+               {'type': 'eq', \
+                'fun': lambda c: splev([x0], (t, c, k), der=2)})
+        # con = ({'type': 'eq', 'fun': lambda c: x0 - anchor})
+    else:
+        print('not anchoring')
+        con = ({'type': 'eq', \
+               'fun': lambda c: splev([x_end], (t, c, k), der=1)}, \
+               {'type': 'eq', \
+                'fun': lambda c: splev([x0], (t, c, k), der=2)})
     opt = minimize(err, c0, (x, y, t, k, w), constraints=con)
     copt = opt.x
     return UnivariateSpline._from_tck((t, copt, k))
 
-def find_segs_cont_bound(wave, flux, npix=25, s=5, k=3, noise_min=1125, noise_max=1175):
+def find_segs_cont_bound(wave, flux, npix=30, s=0.75, k=3, noise_min=1125, noise_max=1175):
     
     spec_split = split_spec(len(wave), npix)
 
@@ -496,13 +501,15 @@ def find_segs_cont_bound(wave, flux, npix=25, s=5, k=3, noise_min=1125, noise_ma
     spl_fits1 = []
     
     for i, segment in enumerate(spec_split):
-        # get boundary conditions
-        #bbox = [1, 1]
+        
         # sp0 = UnivariateSpline(wave[segment], flux[segment], k=k, s=s)
         if i==0:
             anchor=None
+        elif ((spl_fits1[i-1](x[spec_split[i-1]]))[-1] \
+              > 1+ 1.5*get_noise(wave, conv_1, noise_min, noise_max)):
+            anchor=1
         else:
-            anchor=spl_fits1[i-1](spec_split[i-1])[-1]
+            anchor=(spl_fits1[i-1](x[spec_split[i-1]]))[-1]
         spl1 = spline_neumann(wave[segment], flux[segment], k=k, s=s, anchor=anchor)
         # spl1 = UnivariateSpline(wave[segment], flux[segment], s=s, k=k)
         # spl1 = CubicSpline(x[segment], conv_1[segment])
@@ -521,12 +528,24 @@ def find_segs_cont_bound(wave, flux, npix=25, s=5, k=3, noise_min=1125, noise_ma
     # Reject piexels in each segment which lie more than two sigma below the fit
     
     for i, segment in enumerate(spec_split): # refit one segment at a time
+        
+        if i==0:
+            anchor=None
+            print('anchor set to none')
+        elif ((spl_fits1[i-1](x[spec_split[i-1]]))[-1] \
+              > 1+ 1.5*get_noise(wave, conv_1, noise_min, noise_max)):
+            anchor=1
+            print('anchor set to', anchor)
+        else:
+            anchor=(spl_fits1[i-1](x[spec_split[i-1]]))[-1]
+            # print((spl_fits1[i-1](spec_split[i-1])))
+            print('anchor set to', anchor)
     
-        seg_noise = np.std(flux[segment])
+        # seg_noise = np.std(flux[segment])
         spec_noise = get_noise(wave, conv_1, noise_min, noise_max)
-        print('spec_noise = ', spec_noise)
+        
     
-        segment_ini = segment
+        # segment_ini = segment
         
         spl_flux = spl_fits1[i](wave[segment])
         seg_flux = flux[segment]
@@ -536,25 +555,23 @@ def find_segs_cont_bound(wave, flux, npix=25, s=5, k=3, noise_min=1125, noise_ma
         
         flux_dists = seg_flux - spl_flux
         flux_dists_sigma = flux_dists / sigma_flux
-        print(flux_dists_sigma)
+        
         
         # big_sig_mask = np.where(flux_dists_sigma <= -2.0)
         big_sig_mask = np.where(flux_dists <= -spec_noise)
-        print('there are', len(big_sig_mask[0]), 'big sigs in segment', i)
-        print(big_sig_mask[0])
+        
         
         big_counter = len(big_sig_mask[0])
         while big_counter > 0:
-            print('refitting segment', i)
-            print(big_sig_mask[0])
+            
             segment = np.delete(segment, big_sig_mask[0])
             
             seg_flux = flux[segment]
             seg_wave = wave[segment]
             
-            sp0_refit = UnivariateSpline(wave[segment], flux[segment], k=k, s=s)
+            # sp0_refit = UnivariateSpline(wave[segment], flux[segment], k=k, s=s)
             # spl1 = spline_neumann(wave[segment], flux[segment], k=k, s=s)
-            spl_refit = spline_neumann(seg_wave, seg_flux, s=s, k=k)
+            spl_refit = spline_neumann(seg_wave, seg_flux, s=s, k=k, anchor=anchor)
             
             spl_fits1[i] = spl_refit
             
@@ -565,8 +582,8 @@ def find_segs_cont_bound(wave, flux, npix=25, s=5, k=3, noise_min=1125, noise_ma
             flux_dists = seg_flux - spl_flux
             flux_dists_sigma = flux_dists / sigma_flux
             
-            # big_sig_mask = np.where(flux_dists_sigma <= -2.0)
-            big_sig_mask = np.where(flux_dists <= -spec_noise)
+            big_sig_mask = np.where(flux_dists_sigma <= -2.0)
+            # big_sig_mask = np.where(flux_dists <= -spec_noise)
             big_counter = len(big_sig_mask[0])
             
     plt.figure(dpi=200)

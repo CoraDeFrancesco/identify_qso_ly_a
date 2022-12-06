@@ -20,7 +20,8 @@ from scipy.optimize import curve_fit
 import norm_module as nm
 from scipy.interpolate import UnivariateSpline
 from scipy.interpolate import CubicSpline
-from scipy.interpolate import splprep, splev, make_interp_spline
+from scipy.interpolate import splprep, splev, make_interp_spline, splrep
+from scipy.optimize import minimize
 
 #-----------------------------------------------------------------------------
 # Setup
@@ -439,6 +440,7 @@ def split_spec(len_spec, len_seg):
 
 def find_segs_cont(wave, flux, npix=20, s=1000, k=3, noise_min=1125, noise_max=1175):
     
+    #TODO: make sure to return segments covering the entire wavelength range provided.
     spec_split = split_spec(len(wave), npix)
 
     # Fit continuous cubic spline to each segment
@@ -519,6 +521,180 @@ def find_segs_cont(wave, flux, npix=20, s=1000, k=3, noise_min=1125, noise_max=1
         spl_model_out = np.concatenate((spl_model_out, spl_fits1[i](wave[segment])))
     diff_len = len(wave) - len(spl_model_out)
     spl_model_out = np.concatenate((spl_model_out, np.ones(diff_len)))
+
+    return(spl_model_out)
+
+def guess(x, y, k, s, w=None):
+    """Do an ordinary spline fit to provide knots (credit:@askewchan)"""
+    return splrep(x, y, w, k=k, s=s)
+
+def err(c, x, y, t, k, w=None):
+    """The error function to minimize (credit:@askewchan)"""
+    diff = y - splev(x, (t, c, k))
+    if w is None:
+        diff = np.einsum('...i,...i', diff, diff)
+    else:
+        diff = np.dot(diff*diff, w)
+    return np.abs(diff)
+
+def spline_neumann(x, y, k=3, s=0, w=None, anchor=None):
+    '''
+    Spline fitting with smoothing and boundary conditions. (credit:@askewchan)
+
+    Parameters
+    ----------
+    x : arr
+        wavelength array.
+    y : arr
+        flux array.
+    k : int, optional
+        Degree of polynomial spline. The default is 3.
+    s : float, optional
+        Smoothing factor. The default is 0.
+    w : arr, optional
+        Wights. The default is None.
+    anchor : float, optional
+        Anchor flux value from previous segment.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    '''
+    
+        
+    t, c0, k = guess(x, y, k, s, w=w)
+    x0 = x[0] # point at which zero slope is required (first point)
+    x_end = x[-1] #also require zero slope at end
+    if anchor:
+        print('anchoring at', anchor)
+        con = ({'type': 'eq', 'fun': lambda c: x0 - anchor}, \
+               {'type': 'eq', \
+                'fun': lambda c: splev([x_end], (t, c, k), der=1)}, \
+               {'type': 'eq', \
+                'fun': lambda c: splev([x0], (t, c, k), der=2)})
+        # con = ({'type': 'eq', 'fun': lambda c: x0 - anchor})
+    else:
+        print('not anchoring')
+        con = ({'type': 'eq', \
+               'fun': lambda c: splev([x_end], (t, c, k), der=1)}, \
+               {'type': 'eq', \
+                'fun': lambda c: splev([x0], (t, c, k), der=2)})
+    opt = minimize(err, c0, (x, y, t, k, w), constraints=con)
+    copt = opt.x
+    return UnivariateSpline._from_tck((t, copt, k))
+
+def find_segs_cont_bound(wave, flux, npix=30, s=1.5, k=3, noise_min=1125, noise_max=1175):
+    
+    spec_split = split_spec(len(wave), npix)
+
+    # Fit continuous cubic spline to each segment
+    
+    spl_fits1 = []
+    
+    for i, segment in enumerate(spec_split):
+        
+        # sp0 = UnivariateSpline(wave[segment], flux[segment], k=k, s=s)
+        if i==0:
+            anchor=None
+        elif ((spl_fits1[i-1](wave[spec_split[i-1]]))[-1] \
+              > 1+ 1.5*get_noise(wave, flux, noise_min, noise_max)):
+            anchor=1
+        else:
+            anchor=(spl_fits1[i-1](wave[spec_split[i-1]]))[-1]
+            if anchor==np.nan:
+                anchor=1
+        spl1 = spline_neumann(wave[segment], flux[segment], k=k, s=s, anchor=anchor)
+        # spl1 = UnivariateSpline(wave[segment], flux[segment], s=s, k=k)
+        # spl1 = CubicSpline(x[segment], conv_1[segment])
+        
+        spl_fits1.append(spl1)
+        
+    plt.figure(dpi=200)
+    plt.plot(wave, flux, alpha=0.5)
+    # plt.plot(x, conv_2, alpha=0.5)
+    for i, segment in enumerate(spec_split):
+        plt.plot(wave[segment], spl_fits1[i](wave[segment]), color='blue')
+    plt.ylim(-0.01, 2.1)
+    plt.show()
+    plt.clf()
+    
+    # Reject piexels in each segment which lie more than two sigma below the fit
+    
+    for i, segment in enumerate(spec_split): # refit one segment at a time
+        
+        if i==0:
+            anchor=None
+            print('anchor set to none')
+        elif ((spl_fits1[i-1](wave[spec_split[i-1]]))[-1] \
+              > 1+ 1.5*get_noise(wave, flux, noise_min, noise_max)):
+            anchor=1
+            print('anchor set to', anchor)
+        else:
+            anchor=(spl_fits1[i-1](wave[spec_split[i-1]]))[-1]
+            if anchor==np.nan:
+                anchor=1
+            print('anchor set to', anchor)
+    
+        # seg_noise = np.std(flux[segment])
+        spec_noise = get_noise(wave, flux, noise_min, noise_max)
+        
+    
+        # segment_ini = segment
+        
+        spl_flux = spl_fits1[i](wave[segment])
+        seg_flux = flux[segment]
+        seg_wave = wave[segment]
+        sigma_flux = np.std(seg_flux)
+        # print(sigma_flux)
+        
+        flux_dists = seg_flux - spl_flux
+        flux_dists_sigma = flux_dists / sigma_flux
+        
+        
+        # big_sig_mask = np.where(flux_dists_sigma <= -2.0)
+        big_sig_mask = np.where(flux_dists <= -spec_noise)
+        
+        
+        big_counter = len(big_sig_mask[0])
+        while big_counter > 0:
+            
+            segment = np.delete(segment, big_sig_mask[0])
+            
+            seg_flux = flux[segment]
+            seg_wave = wave[segment]
+            
+            # sp0_refit = UnivariateSpline(wave[segment], flux[segment], k=k, s=s)
+            # spl1 = spline_neumann(wave[segment], flux[segment], k=k, s=s)
+            spl_refit = spline_neumann(seg_wave, seg_flux, s=s, k=k, anchor=anchor)
+            
+            spl_fits1[i] = spl_refit
+            
+            spl_flux = spl_refit(wave[segment])
+            
+            sigma_flux = np.std(seg_flux)
+            
+            flux_dists = seg_flux - spl_flux
+            flux_dists_sigma = flux_dists / sigma_flux
+            
+            big_sig_mask = np.where(flux_dists_sigma <= -2.0)
+            # big_sig_mask = np.where(flux_dists <= -spec_noise)
+            big_counter = len(big_sig_mask[0])
+            
+    plt.figure(dpi=200)
+    plt.plot(wave, flux, alpha=0.5)
+    # plt.plot(x, conv_2, alpha=0.5)
+    for i, segment in enumerate(spec_split):
+        plt.plot(wave[segment], spl_fits1[i](wave[segment]), color='blue')
+    plt.ylim(-0.01, 2.1)
+    plt.show()
+    plt.clf()     
+    
+    
+    spl_model_out = np.array([])
+    for i, segment in enumerate(spec_split):
+        spl_model_out = np.concatenate((spl_model_out, spl_fits1[i](wave[segment])))
 
     return(spl_model_out)
 
@@ -728,8 +904,9 @@ plt.clf()
 
 #%% Smooth specs, fit spline ---------------------------------------------------
 
-spl1 = find_segs_cont(norm_wave[0], norm_flux[0], noise_min=1600, noise_max=1800)
-spl2 = find_segs_cont(norm_wave[1], norm_flux[1], noise_min=1600, noise_max=1800)
+wave_mask = np.where((norm_wave[0] >= wave_min) & (norm_wave[0] <= wave_max))
+spl1 = find_segs_cont_bound(norm_wave[0][wave_mask], norm_flux[0][wave_mask], noise_min=1600, noise_max=1800)
+spl2 = find_segs_cont_bound(norm_wave[1][wave_mask], norm_flux[1][wave_mask], noise_min=1600, noise_max=1800)
     
 spl_funcs = [spl1, spl2]
 
@@ -738,8 +915,8 @@ plt.plot(norm_wave[0], norm_flux[0], lw=1, alpha=0.2, \
           label=spec_labels[0], ds='steps-mid', color='blue')
 plt.plot(norm_wave[1], norm_flux[1], lw=1, alpha=0.2, \
           label=spec_labels[1], ds='steps-mid', color='red')
-plt.plot(norm_wave[0], spl1, color='green')
-plt.plot(norm_wave[1], spl2, color='orange')
+plt.plot(norm_wave[0][wave_mask], spl1, color='green')
+plt.plot(norm_wave[1][wave_mask], spl2, color='orange')
 
 plt.xlim(wave_min, wave_max)
 plt.ylim(0, 2)
