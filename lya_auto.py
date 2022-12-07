@@ -28,14 +28,16 @@ from scipy.optimize import minimize
 #-----------------------------------------------------------------------------
 
 
-obj_name = 'J075852'
-spec_dir = 'specs/J075852/' # data directory (with /)
-spec_file_1 = 'spec-2265-53674-0405-dered.txt' # spectrum 1 file name
-spec_file_2 = 'spec-4506-55568-0824.dr9' # spectrum 2 file name
-spec_mjd_1 = '53674' # MJD of spectrum 1
-spec_mjd_2 = '55568' # MjD of spectrum 2
+obj_name = 'J085825'
+spec_dir = 'specs/J085825/' # data directory (with /)
+spec_file_1 = 'spec-0468-51912-0036-dered.txt' # spectrum 1 file name
+spec_file_2 = 'spec-3815-55537-0910.dr9' # spectrum 2 file name
+spec_mjd_1 = '51912' # MJD of spectrum 1
+spec_mjd_2 = '55537' # MjD of spectrum 2
 
-z = 3.3734 # redshift of object (float)
+z = 2.8684 # redshift of object (float)
+
+catch_negs = True # Adjust negative flux values to zero.
 
 delta = 10 # Number of wavelength bins to fit in one gaussian abs line
 delta_spline = 5
@@ -585,7 +587,7 @@ def spline_neumann(x, y, k=3, s=0, w=None, anchor=None):
     copt = opt.x
     return UnivariateSpline._from_tck((t, copt, k))
 
-def find_segs_cont_bound(wave, flux, npix=30, s=1.5, k=3, noise_min=1125, noise_max=1175):
+def find_segs_cont_bound(wave, flux, npix=20, s=1.5, k=3, noise_min=1125, noise_max=1175):
     
     spec_split = split_spec(len(wave), npix)
 
@@ -612,11 +614,15 @@ def find_segs_cont_bound(wave, flux, npix=30, s=1.5, k=3, noise_min=1125, noise_
         spl_fits1.append(spl1)
         
     plt.figure(dpi=200)
+    plt.title('Spline Guess')
     plt.plot(wave, flux, alpha=0.5)
     # plt.plot(x, conv_2, alpha=0.5)
     for i, segment in enumerate(spec_split):
         plt.plot(wave[segment], spl_fits1[i](wave[segment]), color='blue')
     plt.ylim(-0.01, 2.1)
+    plt.xlim(1060, 1200)
+    plt.ylabel('Normalized Flux')
+    plt.xlabel('Rest Frame Wavelength (A)')
     plt.show()
     plt.clf()
     
@@ -683,11 +689,15 @@ def find_segs_cont_bound(wave, flux, npix=30, s=1.5, k=3, noise_min=1125, noise_
             big_counter = len(big_sig_mask[0])
             
     plt.figure(dpi=200)
+    plt.title('Spline Fit')
     plt.plot(wave, flux, alpha=0.5)
     # plt.plot(x, conv_2, alpha=0.5)
     for i, segment in enumerate(spec_split):
         plt.plot(wave[segment], spl_fits1[i](wave[segment]), color='blue')
     plt.ylim(-0.01, 2.1)
+    plt.xlim(1060, 1200)
+    plt.ylabel('Normalized Flux')
+    plt.xlabel('Rest Frame Wavelength (A)')
     plt.show()
     plt.clf()     
     
@@ -695,8 +705,11 @@ def find_segs_cont_bound(wave, flux, npix=30, s=1.5, k=3, noise_min=1125, noise_
     spl_model_out = np.array([])
     for i, segment in enumerate(spec_split):
         spl_model_out = np.concatenate((spl_model_out, spl_fits1[i](wave[segment])))
+        
+    len_ones = len(wave) - len(spl_model_out)
+    full_model_out = np.concatenate((spl_model_out, np.ones(len_ones)))
 
-    return(spl_model_out)
+    return(full_model_out)
 
 #-----------------------------------------------------------------------------
 # Execution
@@ -783,17 +796,11 @@ for i, align_flux in enumerate(align_fluxes):
     bos_norm = nm.norm(align_wave, align_flux, plot_checks=False)
     norm_wave.append(align_wave)
     print(bos_norm)
+    if catch_negs:
+        neg_mask = np.where(bos_norm < 0)
+        bos_norm[neg_mask] = 0.0
     norm_flux.append(bos_norm)
 
-
-# for i, align_flux in enumerate(align_fluxes):
-    
-#     bos_norm = nm.norm(align_wave, align_flux, plot_checks=False)
-#     norm_wave.append(align_wave)
-#     print(bos_norm)
-#     norm_flux.append(bos_norm)
-    
-# Norm
 
 # Check normalization --------------------------------------------------------
 
@@ -905,8 +912,8 @@ plt.clf()
 #%% Smooth specs, fit spline ---------------------------------------------------
 
 wave_mask = np.where((norm_wave[0] >= wave_min) & (norm_wave[0] <= wave_max))
-spl1 = find_segs_cont_bound(norm_wave[0][wave_mask], norm_flux[0][wave_mask], noise_min=1600, noise_max=1800)
-spl2 = find_segs_cont_bound(norm_wave[1][wave_mask], norm_flux[1][wave_mask], noise_min=1600, noise_max=1800)
+spl1 = find_segs_cont_bound(norm_wave[0], norm_flux[0], noise_min=1600, noise_max=1800)
+spl2 = find_segs_cont_bound(norm_wave[1], norm_flux[1], noise_min=1600, noise_max=1800)
     
 spl_funcs = [spl1, spl2]
 
@@ -915,8 +922,8 @@ plt.plot(norm_wave[0], norm_flux[0], lw=1, alpha=0.2, \
           label=spec_labels[0], ds='steps-mid', color='blue')
 plt.plot(norm_wave[1], norm_flux[1], lw=1, alpha=0.2, \
           label=spec_labels[1], ds='steps-mid', color='red')
-plt.plot(norm_wave[0][wave_mask], spl1, color='green')
-plt.plot(norm_wave[1][wave_mask], spl2, color='orange')
+plt.plot(norm_wave[0], spl1, color='green')
+plt.plot(norm_wave[1], spl2, color='orange')
 
 plt.xlim(wave_min, wave_max)
 plt.ylim(0, 2)
