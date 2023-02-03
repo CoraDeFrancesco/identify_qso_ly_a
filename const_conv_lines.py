@@ -162,17 +162,24 @@ if plot_int:
 
     plt.figure(dpi=200)
     
-    plt.plot(x, bline, color='red', alpha=0.5)
-    plt.plot(x, bline2, color='purple', alpha=0.5)
+    plt.title('Simulated Data')
     
-    #plt.plot(x, lline*lline2, label='Ly-a', lw=1, color='green')
-    plt.plot(x,conv_1, label='Observed 1', color='red', lw=2)
-    plt.plot(x,conv_2, label='Observed 2', color='purple', lw=2)
+    plt.plot(x, bline, color='red', alpha=0.8)
+    plt.plot(x, bline2, color='purple', alpha=0.8)
+    
+    plt.plot(x, lline, label='Ly-a', lw=2, color='green')
+    plt.plot(x, lline*lline2, lw=2, color='green')
+    plt.plot(x, lline*lline3,  lw=2, color='green')
+    plt.plot(x,conv_1, label='Observed 1', color='red', lw=2, alpha=0.5)
+    plt.plot(x,conv_2, label='Observed 2', color='purple', lw=2, alpha=0.5)
     
     plt.legend()
     
     plt.ylim(-0.01, 1.25)
     plt.xlim(1050, 1150)
+    
+    plt.xlabel('Wavelength (arbitraty units)')
+    plt.ylabel('Normalized Flux')
     
     plt.show()
     plt.clf()
@@ -492,7 +499,7 @@ def spline_neumann(x, y, k=3, s=0, w=None, anchor=None):
     copt = opt.x
     return UnivariateSpline._from_tck((t, copt, k))
 
-def find_segs_cont_bound(wave, flux, npix=30, s=0.75, k=3, noise_min=1125, noise_max=1175):
+def find_segs_cont_bound(wave, flux, npix=30, s=1, k=3, noise_min=1125, noise_max=1175):
     
     spec_split = split_spec(len(wave), npix)
 
@@ -521,7 +528,12 @@ def find_segs_cont_bound(wave, flux, npix=30, s=0.75, k=3, noise_min=1125, noise
     # plt.plot(x, conv_2, alpha=0.5)
     for i, segment in enumerate(spec_split):
         plt.plot(wave[segment], spl_fits1[i](x[segment]), color='blue')
-    plt.ylim(-0.01, 2.1)
+    plt.ylim(-0.01, 1.25)
+    plt.xlim(1050, 1150)
+    
+    plt.xlabel('Wavelength (arbitraty units)')
+    plt.ylabel('Normalized Flux')
+    plt.title('Simulated Data - Spline Fitting')
     plt.show()
     plt.clf()
     
@@ -591,7 +603,12 @@ def find_segs_cont_bound(wave, flux, npix=30, s=0.75, k=3, noise_min=1125, noise
     # plt.plot(x, conv_2, alpha=0.5)
     for i, segment in enumerate(spec_split):
         plt.plot(wave[segment], spl_fits1[i](x[segment]), color='blue')
-    plt.ylim(-0.01, 2.1)
+    plt.ylim(-0.01, 1.25)
+    plt.xlim(1050, 1150)
+    
+    plt.xlabel('Wavelength (arbitraty units)')
+    plt.ylabel('Normalized Flux')
+    plt.title('Simulated Data - Spline Fitting')
     plt.show()
     plt.clf()     
     

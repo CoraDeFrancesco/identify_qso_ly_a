@@ -438,7 +438,8 @@ def norm(data_wave, data_flux, norm_point=1290, plot_checks=True, plot_res=True)
         
         plt.legend(fontsize=8)
         
-        plt.xlim(min(wave_pca_b), max(wave_pca_b))
+        #plt.xlim(min(wave_pca_b), max(wave_pca_b))
+        plt.xlim(1060, 1200)
         plt.ylim(-0.01, 3)
         
         plt.xlabel('Wavelength (A)')

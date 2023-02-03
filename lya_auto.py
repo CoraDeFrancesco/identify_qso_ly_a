@@ -37,6 +37,7 @@ spec_mjd_2 = '55537' # MjD of spectrum 2
 
 z = 2.8684 # redshift of object (float)
 
+
 catch_negs = True # Adjust negative flux values to zero.
 
 delta = 10 # Number of wavelength bins to fit in one gaussian abs line
@@ -575,19 +576,19 @@ def spline_neumann(x, y, k=3, s=0, w=None, anchor=None):
                {'type': 'eq', \
                 'fun': lambda c: splev([x_end], (t, c, k), der=1)}, \
                {'type': 'eq', \
-                'fun': lambda c: splev([x0], (t, c, k), der=2)})
+                'fun': lambda c: splev([x0], (t, c, k), der=1)})
         # con = ({'type': 'eq', 'fun': lambda c: x0 - anchor})
     else:
         print('not anchoring')
         con = ({'type': 'eq', \
                'fun': lambda c: splev([x_end], (t, c, k), der=1)}, \
                {'type': 'eq', \
-                'fun': lambda c: splev([x0], (t, c, k), der=2)})
+                'fun': lambda c: splev([x0], (t, c, k), der=1)})
     opt = minimize(err, c0, (x, y, t, k, w), constraints=con)
     copt = opt.x
     return UnivariateSpline._from_tck((t, copt, k))
 
-def find_segs_cont_bound(wave, flux, npix=20, s=1.5, k=3, noise_min=1125, noise_max=1175):
+def find_segs_cont_bound(wave, flux, npix=16, s=0.5, k=3, noise_min=1125, noise_max=1175):
     
     spec_split = split_spec(len(wave), npix)
 
@@ -597,19 +598,23 @@ def find_segs_cont_bound(wave, flux, npix=20, s=1.5, k=3, noise_min=1125, noise_
     
     for i, segment in enumerate(spec_split):
         
+        print('WORKING ON SEGMENT', i, 'FIRST PASS')
+        
         # sp0 = UnivariateSpline(wave[segment], flux[segment], k=k, s=s)
         if i==0:
             anchor=None
+            print('   anchor set to', anchor)
         elif ((spl_fits1[i-1](wave[spec_split[i-1]]))[-1] \
               > 1+ 1.5*get_noise(wave, flux, noise_min, noise_max)):
             anchor=1
+            print('   anchor set to', anchor)
         else:
             anchor=(spl_fits1[i-1](wave[spec_split[i-1]]))[-1]
-            if anchor==np.nan:
+            if np.isnan(anchor):
+                print('NAN IDENTIFIED')
                 anchor=1
+            print('   anchor set to', anchor)
         spl1 = spline_neumann(wave[segment], flux[segment], k=k, s=s, anchor=anchor)
-        # spl1 = UnivariateSpline(wave[segment], flux[segment], s=s, k=k)
-        # spl1 = CubicSpline(x[segment], conv_1[segment])
         
         spl_fits1.append(spl1)
         
@@ -626,22 +631,25 @@ def find_segs_cont_bound(wave, flux, npix=20, s=1.5, k=3, noise_min=1125, noise_
     plt.show()
     plt.clf()
     
-    # Reject piexels in each segment which lie more than two sigma below the fit
+    # Reject piexels in each segment which lie more than 1.5 sigma below the fit
     
     for i, segment in enumerate(spec_split): # refit one segment at a time
         
+        print('WORKING ON SEGMENT', i, 'REFIT')
+        
         if i==0:
             anchor=None
-            print('anchor set to none')
+            print('   anchor set to none')
         elif ((spl_fits1[i-1](wave[spec_split[i-1]]))[-1] \
               > 1+ 1.5*get_noise(wave, flux, noise_min, noise_max)):
             anchor=1
-            print('anchor set to', anchor)
+            print('   anchor set to', anchor)
         else:
             anchor=(spl_fits1[i-1](wave[spec_split[i-1]]))[-1]
-            if anchor==np.nan:
+            if np.isnan(anchor):
+                print('NAN IDENTIFIED')
                 anchor=1
-            print('anchor set to', anchor)
+            print('   anchor set to', anchor)
     
         # seg_noise = np.std(flux[segment])
         spec_noise = get_noise(wave, flux, noise_min, noise_max)
@@ -684,7 +692,7 @@ def find_segs_cont_bound(wave, flux, npix=20, s=1.5, k=3, noise_min=1125, noise_
             flux_dists = seg_flux - spl_flux
             flux_dists_sigma = flux_dists / sigma_flux
             
-            big_sig_mask = np.where(flux_dists_sigma <= -2.0)
+            big_sig_mask = np.where(flux_dists_sigma <= -1.5)
             # big_sig_mask = np.where(flux_dists <= -spec_noise)
             big_counter = len(big_sig_mask[0])
             
