@@ -41,7 +41,6 @@ z = 2.8684 # redshift of object (float)
 catch_negs = True # Adjust negative flux values to zero.
 
 delta = 10 # Number of wavelength bins to fit in one gaussian abs line
-delta_spline = 5
 perc_cut=0.80 # Between 0 and 1. Percentage of normalized flux abs must exceed.
 wave_min=1060 # Min wavelength for finding peaks.
 wave_max=1200 # Maximum wavelength for finding peaks
@@ -572,23 +571,24 @@ def spline_neumann(x, y, k=3, s=0, w=None, anchor=None):
     x_end = x[-1] #also require zero slope at end
     if anchor:
         print('anchoring at', anchor)
-        con = ({'type': 'eq', 'fun': lambda c: x0 - anchor}, \
-               {'type': 'eq', \
-                'fun': lambda c: splev([x_end], (t, c, k), der=1)}, \
-               {'type': 'eq', \
-                'fun': lambda c: splev([x0], (t, c, k), der=1)})
-        # con = ({'type': 'eq', 'fun': lambda c: x0 - anchor})
+        # con = ({'type': 'eq', 'fun': lambda c: x0 - anchor}, \
+        #        {'type': 'eq', \
+        #         'fun': lambda c: splev([x_end], (t, c, k), der=2)}, \
+        #        {'type': 'eq', \
+        #         'fun': lambda c: splev([x0], (t, c, k), der=1)})
+        con = ({'type': 'eq', 'fun': lambda c: x0 - anchor})
     else:
         print('not anchoring')
         con = ({'type': 'eq', \
-               'fun': lambda c: splev([x_end], (t, c, k), der=1)}, \
+               'fun': lambda c: splev([x_end], (t, c, k), der=2)}, \
                {'type': 'eq', \
                 'fun': lambda c: splev([x0], (t, c, k), der=1)})
     opt = minimize(err, c0, (x, y, t, k, w), constraints=con)
     copt = opt.x
     return UnivariateSpline._from_tck((t, copt, k))
 
-def find_segs_cont_bound(wave, flux, npix=16, s=0.5, k=3, noise_min=1125, noise_max=1175):
+def find_segs_cont_bound(wave, flux, npix=16, s=0.5, k=3, \
+                         noise_min=1125, noise_max=1175, sig_cut=1.5):
     
     spec_split = split_spec(len(wave), npix)
 
@@ -604,10 +604,10 @@ def find_segs_cont_bound(wave, flux, npix=16, s=0.5, k=3, noise_min=1125, noise_
         if i==0:
             anchor=None
             print('   anchor set to', anchor)
-        elif ((spl_fits1[i-1](wave[spec_split[i-1]]))[-1] \
-              > 1+ 1.5*get_noise(wave, flux, noise_min, noise_max)):
-            anchor=1
-            print('   anchor set to', anchor)
+        # elif ((spl_fits1[i-1](wave[spec_split[i-1]]))[-1] \
+        #       > 1+ sig_cut*get_noise(wave, flux, noise_min, noise_max)):
+        #     anchor=1
+        #     print('   anchor set to', anchor)
         else:
             anchor=(spl_fits1[i-1](wave[spec_split[i-1]]))[-1]
             if np.isnan(anchor):
@@ -640,10 +640,10 @@ def find_segs_cont_bound(wave, flux, npix=16, s=0.5, k=3, noise_min=1125, noise_
         if i==0:
             anchor=None
             print('   anchor set to none')
-        elif ((spl_fits1[i-1](wave[spec_split[i-1]]))[-1] \
-              > 1+ 1.5*get_noise(wave, flux, noise_min, noise_max)):
-            anchor=1
-            print('   anchor set to', anchor)
+        # elif ((spl_fits1[i-1](wave[spec_split[i-1]]))[-1] \
+        #       > 1+ sig_cut*get_noise(wave, flux, noise_min, noise_max)):
+        #     anchor=1
+        #     print('   anchor set to', anchor)
         else:
             anchor=(spl_fits1[i-1](wave[spec_split[i-1]]))[-1]
             if np.isnan(anchor):
@@ -667,8 +667,9 @@ def find_segs_cont_bound(wave, flux, npix=16, s=0.5, k=3, noise_min=1125, noise_
         flux_dists_sigma = flux_dists / sigma_flux
         
         
-        # big_sig_mask = np.where(flux_dists_sigma <= -2.0)
         big_sig_mask = np.where(flux_dists <= -spec_noise)
+        # big_sig_mask = np.where(np.abs(flux_dists_sigma) >= sig_cut) #flag both
+                                        # above and below n sigma
         
         
         big_counter = len(big_sig_mask[0])
@@ -692,8 +693,9 @@ def find_segs_cont_bound(wave, flux, npix=16, s=0.5, k=3, noise_min=1125, noise_
             flux_dists = seg_flux - spl_flux
             flux_dists_sigma = flux_dists / sigma_flux
             
-            big_sig_mask = np.where(flux_dists_sigma <= -1.5)
-            # big_sig_mask = np.where(flux_dists <= -spec_noise)
+            big_sig_mask = np.where(flux_dists_sigma <= -sig_cut)
+            # big_sig_mask = np.where(np.abs(flux_dists_sigma) >= sig_cut) #flag both
+                                        # above and below n sigma
             big_counter = len(big_sig_mask[0])
             
     plt.figure(dpi=200)
